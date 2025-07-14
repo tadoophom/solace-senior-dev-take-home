@@ -1,3 +1,4 @@
+const { recordAndDetectVoice } = require('./vad');
 const { webcrypto } = require('crypto');
 const { subtle, getRandomValues } = webcrypto;
 const { TextEncoder, TextDecoder } = require('util');
