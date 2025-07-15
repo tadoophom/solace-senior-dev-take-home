@@ -4,3 +4,4 @@ venv/
 .env
 
 infra/deployment-package.zip
+lambda_package/
