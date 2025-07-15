@@ -9,7 +9,7 @@ const subtle = webcrypto.subtle;
  * @returns {Promise<CryptoKey>}
  */
 async function getKey(keyMaterial) {
-  if (keyMaterial instanceof webcrypto.CryptoKey) {
+  if (typeof globalThis.CryptoKey !== 'undefined' && keyMaterial instanceof globalThis.CryptoKey) {
     return keyMaterial;
   }
   let raw;

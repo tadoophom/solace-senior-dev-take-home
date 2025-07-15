@@ -1,8 +1,12 @@
-const { uploadBlob, downloadAndDecrypt } = require('../src/http');
-const { decryptBlob } = require('../src/crypto');
+jest.mock('../src/crypto', () => ({
+  decryptBlob: jest.fn().mockResolvedValue('plain')
+}));
 
 jest.mock('cross-fetch', () => jest.fn());
 const fetch = require('cross-fetch');
+
+const { uploadBlob, downloadAndDecrypt } = require('../src/http');
+const { decryptBlob } = require('../src/crypto');
 
 const apiUrl = 'https://example.com';
 
@@ -24,10 +28,8 @@ describe('HTTP helpers', () => {
     const cipher = { iv: 'a', ciphertext: 'b', tag: 'c' };
     fetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(cipher) });
 
-    const spy = jest.spyOn(require('../src/crypto'), 'decryptBlob').mockResolvedValue('plain');
-
     const plain = await downloadAndDecrypt('abc123', apiUrl, 'key');
     expect(plain).toBe('plain');
-    expect(spy).toHaveBeenCalledWith(cipher, 'key');
+    expect(decryptBlob).toHaveBeenCalledWith(cipher, 'key');
   });
 }); 

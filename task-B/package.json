@@ -16,6 +16,6 @@
   "dependencies": {
     "cross-fetch": "^3.1.9",
     "node-record-lpcm16": "^1.0.0",
-    "webrtcvad": "^2.0.1"
+    "webrtcvad": "^1.0.1"
   }
 }
