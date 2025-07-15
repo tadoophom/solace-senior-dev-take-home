@@ -2,3 +2,5 @@ node_modules/
 venv/
 *.pyc
 .env
+
+infra/deployment-package.zip

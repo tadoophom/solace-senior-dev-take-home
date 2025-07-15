@@ -18,3 +18,11 @@ resource "aws_lambda_function_url" "decrypt_url" {
   function_name = aws_lambda_function.decrypt.function_name
   authorization_type = "NONE"
 }
+
+resource "aws_lambda_permission" "public_invoke" {
+  statement_id            = "AllowPublicFunctionURLInvoke"
+  action                  = "lambda:InvokeFunctionUrl"
+  function_name           = aws_lambda_function.decrypt.function_name
+  principal               = "*"
+  function_url_auth_type  = "NONE"
+}
