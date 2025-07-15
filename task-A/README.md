@@ -4,8 +4,6 @@
 
 This service emulates a trusted-execution environment (TEE) by keeping data encrypted at rest (S3), only decrypting inside an AWS Lambda function that has exclusive access to a dedicated KMS key.  The function is exposed through a Lambda Function URL, allowing any HTTP client to request a plaintext reveal of a previously-uploaded, encrypted blob.
 
----
-
 ## 1. Architecture
 
 ```text
@@ -19,17 +17,13 @@ Client ──► S3 (encrypted blob)
 * **Lambda Function URL** – public HTTPS endpoint (no auth for demo; tighten in prod).
 * All resources are provisioned with **Terraform** (see `infra/`).
 
----
-
 ## 2. Prerequisites
 
 * Python ≥ 3.9
 * AWS CLI configured with an account that can create Lambda, IAM, KMS, S3.
 * Terraform ≥ 1.0
-* jq (optional, for pretty-printing JSON in the test script)
-* uv (https://github.com/astral-sh/uv) – ultra-fast Python package manager for dependency installation
-
----
+* jq
+* [uv](https://github.com/astral-sh/uv)
 
 ## 3. Deployment
 
@@ -64,8 +58,6 @@ Client ──► S3 (encrypted blob)
    * `function_url` – HTTPS endpoint
    * `bucket_name` – ciphertext storage bucket
    * `kms_key_id` – CMK ID (for local encryption tests)
-
----
 
 ## 4. End-to-End Test
 
