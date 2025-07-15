@@ -4,7 +4,7 @@
   "description": "",
   "main": "src/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "jest"
   },
   "keywords": [],
   "author": "",
@@ -12,5 +12,9 @@
   "devDependencies": {
     "eslint": "^9.31.0",
     "jest": "^30.0.4"
+  },
+  "dependencies": {
+    "node-record-lpcm16": "^1.0.0",
+    "webrtcvad": "^2.0.1"
   }
 }
