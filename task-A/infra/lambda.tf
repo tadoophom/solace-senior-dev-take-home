@@ -3,7 +3,8 @@ resource "aws_lambda_function" "decrypt" {
   role          = aws_iam_role.lambda_role.arn
   handler       = "handler.handler"
   runtime       = "python3.9"
-  filename      = "../deployment-package.zip"  # zip of src/
+  filename      = "deployment-package.zip"  # zip of src/
+  timeout       = 30
 
   environment {
     variables = {

@@ -1,3 +1,6 @@
+# Get current user for KMS policy
+data "aws_caller_identity" "current" {}
+
 # KMS key for decrypting blobs
 resource "aws_kms_key" "decrypt" {
   description             = "Key for Solace decrypt lambda"
