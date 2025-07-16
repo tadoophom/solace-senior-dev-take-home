@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import './App.css';
 import AudioCaptureService from './services/audioCapture';
 import SpeechRecognitionService from './services/speechRecognition';
+import ChatService from './services/chatService';
+import MemoryService from './services/memoryService';
 import VADIntegration from './utils/vadIntegration';
 
 function App() {
@@ -16,15 +18,32 @@ function App() {
   // Service instances
   const audioCapture = useRef(new AudioCaptureService());
   const speechRecognition = useRef(new SpeechRecognitionService());
+  const chatService = useRef(new ChatService());
+  const memoryService = useRef(new MemoryService());
   const vadIntegration = useRef(new VADIntegration());
 
-  // Cleanup on unmount
+  // Load conversation history on mount
   useEffect(() => {
+    loadConversationHistory();
+    
     return () => {
       audioCapture.current.cleanup();
       vadIntegration.current.stopVAD();
     };
   }, []);
+
+  // Load saved conversation from encrypted storage
+  const loadConversationHistory = async () => {
+    try {
+      const savedHistory = await memoryService.current.loadConversation();
+      if (savedHistory.length > 0) {
+        chatService.current.loadHistory(savedHistory);
+        setStatus('Conversation history loaded');
+      }
+    } catch (error) {
+      console.warn('Failed to load conversation history:', error);
+    }
+  };
 
   const handleStartTalk = async () => {
     try {
@@ -41,7 +60,6 @@ function App() {
       // Start VAD for real-time voice detection
       const audioStream = audioCapture.current.getAudioStream();
       vadIntegration.current.setVoiceDetectedCallback((frame) => {
-        // Visual feedback for voice detection
         setStatus('Recording... (voice detected)');
       });
       
@@ -87,10 +105,22 @@ function App() {
       }
       
       setTranscript(transcribedText);
-      setStatus('Speech recognition complete');
+      setStatus('Getting AI response...');
       
-      // TODO: Send to chatbot in Phase 3
-      setResponse('AI response will be implemented in Phase 3');
+      // Send to chatbot and get response
+      const conversationHistory = chatService.current.getConversationHistory();
+      const aiResponse = await chatService.current.sendMessage(transcribedText, conversationHistory);
+      
+      setResponse(aiResponse);
+      setStatus('Response ready');
+      
+      // Save conversation to encrypted storage
+      try {
+        const updatedHistory = chatService.current.getConversationHistory();
+        await memoryService.current.saveConversation(updatedHistory);
+      } catch (memoryError) {
+        console.warn('Failed to save conversation:', memoryError);
+      }
       
     } catch (error) {
       console.error('Failed to process audio:', error);
@@ -116,6 +146,14 @@ function App() {
 
   const clearError = () => {
     setError('');
+  };
+
+  const clearConversation = () => {
+    chatService.current.clearHistory();
+    memoryService.current.clearConversation();
+    setTranscript('');
+    setResponse('');
+    setStatus('Conversation cleared');
   };
 
   return (
@@ -169,6 +207,14 @@ function App() {
               disabled={!response || isPlaying || response.includes('Phase')}
             >
               {isPlaying ? 'Playing...' : 'Play Response'}
+            </button>
+
+            <button 
+              className="btn btn-warning" 
+              onClick={clearConversation}
+              disabled={isRecording || isPlaying}
+            >
+              Clear
             </button>
           </div>
         </div>
