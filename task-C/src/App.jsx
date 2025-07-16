@@ -4,6 +4,7 @@ import AudioCaptureService from './services/audioCapture';
 import SpeechRecognitionService from './services/speechRecognition';
 import ChatService from './services/chatService';
 import MemoryService from './services/memoryService';
+import TTSService from './services/ttsService';
 import VADIntegration from './utils/vadIntegration';
 
 function App() {
@@ -20,6 +21,7 @@ function App() {
   const speechRecognition = useRef(new SpeechRecognitionService());
   const chatService = useRef(new ChatService());
   const memoryService = useRef(new MemoryService());
+  const ttsService = useRef(new TTSService());
   const vadIntegration = useRef(new VADIntegration());
 
   // Load conversation history on mount
@@ -29,6 +31,7 @@ function App() {
     return () => {
       audioCapture.current.cleanup();
       vadIntegration.current.stopVAD();
+      ttsService.current.stopSpeech();
     };
   }, []);
 
@@ -49,6 +52,10 @@ function App() {
     try {
       setError('');
       setStatus('Requesting microphone access...');
+      
+      // Stop any ongoing TTS playback
+      ttsService.current.stopSpeech();
+      setIsPlaying(false);
       
       // Initialize and start audio capture
       await audioCapture.current.initialize();
@@ -129,15 +136,27 @@ function App() {
     }
   };
 
-  const handlePlayResponse = () => {
-    setIsPlaying(true);
-    setStatus('Playing response...');
-    
-    // TODO: Implement TTS playback in Phase 4
-    setTimeout(() => {
-      setIsPlaying(false);
+  const handlePlayResponse = async () => {
+    if (!response || response.includes('Phase')) {
+      return;
+    }
+
+    try {
+      setIsPlaying(true);
+      setStatus('Synthesizing speech...');
+      
+      // Use TTS service to speak the response
+      await ttsService.current.playSpeech(response, selectedVoice);
+      
       setStatus('Ready');
-    }, 2000);
+      
+    } catch (error) {
+      console.error('Failed to play response:', error);
+      setError(`Failed to play response: ${error.message}`);
+      setStatus('Error');
+    } finally {
+      setIsPlaying(false);
+    }
   };
 
   const handleVoiceChange = (event) => {
