@@ -4,6 +4,27 @@ import { encryptBlob, uploadBlob, downloadAndDecrypt, recordAndDetectVoice } fro
 const API_URL = import.meta.env.VITE_API_URL;
 const ENC_KEY = import.meta.env.VITE_ENC_KEY;
 
+// Helper function to safely decode base64 key
+function decodeEncryptionKey(key) {
+  if (!key) {
+    throw new Error('Encryption key is not defined in environment variables');
+  }
+  
+  try {
+    // Clean the key (remove whitespace)
+    const cleanKey = key.trim();
+    
+    // Validate base64 format
+    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(cleanKey)) {
+      throw new Error('Invalid base64 format for encryption key');
+    }
+    
+    return Uint8Array.from(atob(cleanKey), c => c.charCodeAt(0));
+  } catch (error) {
+    throw new Error(`Failed to decode encryption key: ${error.message}`);
+  }
+}
+
 export default function App() {
   const [blobKey, setBlobKey] = useState(null);
   const [plaintext, setPlaintext] = useState('');
@@ -23,16 +44,14 @@ export default function App() {
   async function handleStopUpload() {
     setRecording(false);
     try {
-      // Concatenate Uint8Array frames into a single Uint8Array
-      const totalLength = frames.reduce((sum, arr) => sum + arr.length, 0);
-      const combined = new Uint8Array(totalLength);
+      const combined = new Uint8Array(frames.reduce((acc, frame) => acc + frame.length, 0));
       let offset = 0;
       for (const arr of frames) {
         combined.set(arr, offset);
         offset += arr.length;
       }
 
-      const keyBytes = Uint8Array.from(atob(ENC_KEY), c=>c.charCodeAt(0));
+      const keyBytes = decodeEncryptionKey(ENC_KEY);
       const cipher = await encryptBlob(combined, keyBytes);
       const blob = new Blob([JSON.stringify(cipher)], { type: 'application/json' });
       const key = await uploadBlob(blob, API_URL);
@@ -45,9 +64,14 @@ export default function App() {
 
   async function handleFetch() {
     if (!blobKey) return;
-    const keyBytes = Uint8Array.from(atob(ENC_KEY), c=>c.charCodeAt(0));
-    const plain = await downloadAndDecrypt(blobKey, API_URL, keyBytes);
-    setPlaintext(plain);
+    try {
+      const keyBytes = decodeEncryptionKey(ENC_KEY);
+      const plain = await downloadAndDecrypt(blobKey, API_URL, keyBytes);
+      setPlaintext(plain);
+    } catch (error) {
+      console.error('Error in handleFetch:', error);
+      alert('Error fetching audio: ' + error.message);
+    }
   }
 
   return (

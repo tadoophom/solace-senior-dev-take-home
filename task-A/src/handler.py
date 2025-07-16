@@ -12,8 +12,9 @@ logger.setLevel(logging.INFO)
 
 def handler(event, context):
     """
-    Lambda handler for decrypting blobs from S3 using KMS.
-    Expects POST with JSON body containing blobKey.
+    Lambda handler for uploading/downloading encrypted blobs to/from S3 using KMS.
+    - POST with binary data (Content-Type: application/octet-stream): Upload blob
+    - POST with JSON body containing blobKey: Download/decrypt blob
     """
     # CORS headers for all responses
     headers = {
@@ -24,24 +25,13 @@ def handler(event, context):
     }
     
     try:
-        # Handle preflight OPTIONS request
-        if event.get("httpMethod") == "OPTIONS":
+        # Handle preflight OPTIONS request (Lambda Function URL format)
+        request_method = event.get("requestContext", {}).get("http", {}).get("method")
+        if request_method == "OPTIONS" or event.get("httpMethod") == "OPTIONS":
             return {
                 "statusCode": 200,
                 "headers": headers,
                 "body": ""
-            }
-        
-        # Parse request body
-        body = json.loads(event.get("body", "{}"))
-        blob_key = body.get("blobKey")
-        
-        if not blob_key:
-            logger.warning("Missing blobKey in request")
-            return {
-                "statusCode": 400,
-                "headers": headers,
-                "body": json.dumps({"error": "blobKey is required"})
             }
         
         # Get environment variables
@@ -58,6 +48,97 @@ def handler(event, context):
         # Initialize AWS clients
         s3_client = boto3.client("s3")
         kms_client = boto3.client("kms")
+        
+        # Determine operation based on Content-Type (check both API Gateway and Function URL formats)
+        content_type = (
+            event.get("headers", {}).get("content-type", "") or
+            event.get("headers", {}).get("Content-Type", "")
+        ).lower()
+        
+        if content_type == "application/octet-stream":
+            # Upload operation
+            return handle_upload(event, s3_client, kms_client, bucket_name, kms_key_id, headers)
+        else:
+            # Download/decrypt operation (default)
+            return handle_download(event, s3_client, kms_client, bucket_name, headers)
+            
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}")
+        return {
+            "statusCode": 500,
+            "headers": headers,
+            "body": json.dumps({"error": "Internal server error"})
+        }
+
+def handle_upload(event, s3_client, kms_client, bucket_name, kms_key_id, headers):
+    """Handle blob upload and encryption"""
+    try:
+        # Get binary data from request body
+        body = event.get("body", "")
+        is_base64 = event.get("isBase64Encoded", False)
+        
+        if is_base64:
+            blob_data = base64.b64decode(body)
+        else:
+            blob_data = body.encode('utf-8') if isinstance(body, str) else body
+        
+        # Generate unique blob key
+        blob_key = str(uuid.uuid4()) + ".blob"
+        
+        # Encrypt data using KMS
+        logger.info(f"Encrypting blob data with KMS key: {kms_key_id}")
+        kms_response = kms_client.encrypt(
+            KeyId=kms_key_id,
+            Plaintext=blob_data
+        )
+        encrypted_blob = kms_response["CiphertextBlob"]
+        
+        # Upload encrypted blob to S3
+        logger.info(f"Uploading encrypted blob: {blob_key} to bucket: {bucket_name}")
+        s3_client.put_object(
+            Bucket=bucket_name,
+            Key=blob_key,
+            Body=encrypted_blob,
+            ContentType="application/octet-stream"
+        )
+        
+        logger.info(f"Successfully uploaded blob: {blob_key}")
+        return {
+            "statusCode": 200,
+            "headers": headers,
+            "body": json.dumps({"blobKey": blob_key})
+        }
+        
+    except ClientError as e:
+        error_code = e.response["Error"]["Code"]
+        logger.error(f"AWS error during upload: {error_code}")
+        return {
+            "statusCode": 500,
+            "headers": headers,
+            "body": json.dumps({"error": "Upload failed"})
+        }
+    except Exception as e:
+        logger.error(f"Upload error: {str(e)}")
+        return {
+            "statusCode": 500,
+            "headers": headers,
+            "body": json.dumps({"error": "Upload failed"})
+        }
+
+def handle_download(event, s3_client, kms_client, bucket_name, headers):
+    """Handle blob download and decryption"""
+    try:
+        # Parse request body
+        body = json.loads(event.get("body", "{}"))
+        blob_key = body.get("blobKey")
+        
+        if not blob_key:
+            logger.warning("Missing blobKey in request")
+            return {
+                "statusCode": 400,
+                "headers": headers,
+                "body": json.dumps({"error": "blobKey is required"})
+            }
         
         # Fetch encrypted blob from S3
         logger.info(f"Fetching blob: {blob_key} from bucket: {bucket_name}")
@@ -116,11 +197,4 @@ def handler(event, context):
             "statusCode": 400,
             "headers": headers,
             "body": json.dumps({"error": "Invalid JSON"})
-        }
-    except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
-        return {
-            "statusCode": 500,
-            "headers": headers,
-            "body": json.dumps({"error": "Internal server error"})
         }

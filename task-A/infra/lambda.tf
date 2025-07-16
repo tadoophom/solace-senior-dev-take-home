@@ -17,6 +17,15 @@ resource "aws_lambda_function" "decrypt" {
 resource "aws_lambda_function_url" "decrypt_url" {
   function_name = aws_lambda_function.decrypt.function_name
   authorization_type = "NONE"
+  
+  cors {
+    allow_credentials = false
+    allow_headers     = ["content-type"]
+    allow_methods     = ["*"]
+    allow_origins     = ["*"]
+    expose_headers    = ["date", "keep-alive"]
+    max_age          = 86400
+  }
 }
 
 resource "aws_lambda_permission" "public_invoke" {

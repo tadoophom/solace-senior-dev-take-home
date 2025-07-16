@@ -72,6 +72,16 @@ pnpm-lock.yaml
 lambda_package/
 infra/deployment-package.zip
 
+# Terraform specific
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.backup
+*.tfplan
+*.tfstate
+.terraformrc
+terraform.rc
+
 # Python specific
 .pytest_cache/
 .mypy_cache/

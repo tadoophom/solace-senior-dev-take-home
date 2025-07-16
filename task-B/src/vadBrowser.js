@@ -36,39 +36,38 @@ async function* recordAndDetectVoiceBrowser(opts = {}) {
   const ctx = new AudioContext({ sampleRate });
   const source = ctx.createMediaStreamSource(stream);
 
-  const bufferSize = 1024; // ScriptProcessorNode buffer size (pow2)
-  const processor = ctx.createScriptProcessor(bufferSize, 1, 1);
+  // Load AudioWorklet processor
+  try {
+    await ctx.audioWorklet.addModule(new URL('./vad-processor.js', import.meta.url));
+  } catch (error) {
+    console.error('Failed to load AudioWorklet processor:', error);
+    throw error;
+  }
 
-  const buf = new Float32Array(frameLength);
-  let bufOffset = 0;
-
-  processor.onaudioprocess = (ev) => {
-    const input = ev.inputBuffer.getChannelData(0);
-    let i = 0;
-    while (i < input.length) {
-      const remain = frameLength - bufOffset;
-      const toCopy = Math.min(remain, input.length - i);
-      buf.set(input.subarray(i, i + toCopy), bufOffset);
-      bufOffset += toCopy;
-      i += toCopy;
-
-      if (bufOffset === frameLength) {
-        const rms = Math.sqrt(buf.reduce((sum, s) => sum + s * s, 0) / buf.length);
-        if (rms > rmsThreshold) {
-          // Copy to ArrayBuffer to detach from underlying Float32Array
-          const frameCopy = new Float32Array(buf).buffer;
-          queue.push({ frame: frameCopy, timestamp: Date.now() });
-        }
-        bufOffset = 0;
-      }
-    }
-  };
-
-  source.connect(processor);
-  processor.connect(ctx.destination);
+  // Create AudioWorkletNode instead of deprecated ScriptProcessorNode
+  const processor = new AudioWorkletNode(ctx, 'vad-processor');
+  
+  // Initialize processor with parameters
+  processor.port.postMessage({
+    type: 'init',
+    data: { frameLength, rmsThreshold }
+  });
 
   // Queue for yielded frames
   const queue = [];
+  
+  // Handle messages from AudioWorklet
+  processor.port.onmessage = (event) => {
+    const { type, data } = event.data;
+    if (type === 'frame') {
+      queue.push(data);
+    }
+  };
+
+  // Connect audio nodes
+  source.connect(processor);
+  processor.connect(ctx.destination);
+
   try {
     while (true) {
       if (queue.length) {
@@ -81,7 +80,7 @@ async function* recordAndDetectVoiceBrowser(opts = {}) {
     // Cleanup on iterator return/break
     processor.disconnect();
     source.disconnect();
-    processor.onaudioprocess = null;
+    processor.port.close();
     stream.getTracks().forEach((t) => t.stop());
     ctx.close();
   }
