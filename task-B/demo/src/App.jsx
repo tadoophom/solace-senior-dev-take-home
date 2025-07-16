@@ -1,10 +1,5 @@
 import React, { useState } from 'react';
-import {
-  encryptBlob,
-  uploadBlob,
-  downloadAndDecrypt,
-  recordAndDetectVoice
-} from '@solace/client-sdk';
+import { encryptBlob, uploadBlob, downloadAndDecrypt, recordAndDetectVoice } from '@solace/client-sdk';
 
 const API_URL = import.meta.env.VITE_API_URL;
 const ENC_KEY = import.meta.env.VITE_ENC_KEY;
@@ -27,8 +22,17 @@ export default function App() {
 
   async function handleStopUpload() {
     setRecording(false);
-    const data = Buffer.concat(frames.map((f) => Buffer.from(f)));
-    const cipher = await encryptBlob(data, Buffer.from(ENC_KEY, 'base64'));
+    // Concatenate Uint8Array frames into a single Uint8Array
+    const totalLength = frames.reduce((sum, arr) => sum + arr.length, 0);
+    const combined = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const arr of frames) {
+      combined.set(arr, offset);
+      offset += arr.length;
+    }
+
+    const keyBytes = Uint8Array.from(atob(ENC_KEY), c=>c.charCodeAt(0));
+    const cipher = await encryptBlob(combined, keyBytes);
     const blob = new Blob([JSON.stringify(cipher)], { type: 'application/json' });
     const key = await uploadBlob(blob, API_URL);
     setBlobKey(key);
@@ -36,7 +40,8 @@ export default function App() {
 
   async function handleFetch() {
     if (!blobKey) return;
-    const plain = await downloadAndDecrypt(blobKey, API_URL, Buffer.from(ENC_KEY, 'base64'));
+    const keyBytes = Uint8Array.from(atob(ENC_KEY), c=>c.charCodeAt(0));
+    const plain = await downloadAndDecrypt(blobKey, API_URL, keyBytes);
     setPlaintext(plain);
   }
 

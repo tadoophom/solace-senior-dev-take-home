@@ -3,13 +3,18 @@
   "version": "0.1.0",
   "description": "",
   "main": "src/index.js",
+  "module": "src/index.mjs",
+  "type": "module",
   "scripts": {
+    "build": "rollup -c",
     "test": "jest"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@rollup/plugin-commonjs": "^24.0.0",
+    "@rollup/plugin-node-resolve": "^15.0.0",
     "eslint": "^9.31.0",
     "jest": "^30.0.4"
   },

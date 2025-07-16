@@ -52,5 +52,5 @@ async function* recordAndDetectVoice() {
     }
   }
 }
-
 module.exports = { recordAndDetectVoice };
+

@@ -1,4 +1,22 @@
-const { webcrypto } = require('crypto');
+const getNodeWebcrypto = () => {
+  try {
+    // Prevent bundlers from statically analysing the require call
+    // eslint-disable-next-line no-new-func
+    const _require = new Function('m', 'return require(m);');
+    return _require('crypto').webcrypto;
+  } catch (_) {
+    return undefined;
+  }
+};
+
+const webcrypto = (typeof globalThis !== 'undefined' && globalThis.crypto && globalThis.crypto.subtle)
+  ? globalThis.crypto
+  : getNodeWebcrypto();
+
+if (!webcrypto) {
+  throw new Error('Web Crypto API not available in this environment');
+}
+
 const subtle = webcrypto.subtle;
 
 /**
@@ -81,4 +99,5 @@ async function decryptBlob(cipher, keyMaterial) {
   return Buffer.from(plainBuf).toString('utf8');
 }
 
-module.exports = { encryptBlob, decryptBlob }; 
+// Export named functions for ES Module compatibility
+export { encryptBlob, decryptBlob }; 
