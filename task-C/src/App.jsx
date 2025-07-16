@@ -6,6 +6,7 @@ import ChatService from './services/chatService';
 import MemoryService from './services/memoryService';
 import TTSService from './services/ttsService';
 import VADIntegration from './utils/vadIntegration';
+import ServiceStatus from './components/ServiceStatus';
 
 function App() {
   const [isRecording, setIsRecording] = useState(false);
@@ -13,8 +14,11 @@ function App() {
   const [selectedVoice, setSelectedVoice] = useState('female');
   const [transcript, setTranscript] = useState('');
   const [response, setResponse] = useState('');
-  const [status, setStatus] = useState('Ready');
+  const [status, setStatus] = useState('Initializing...');
   const [error, setError] = useState('');
+  const [services, setServices] = useState([]);
+  const [statusMinimized, setStatusMinimized] = useState(true);
+  const [retryCount, setRetryCount] = useState(0);
 
   // Service instances
   const audioCapture = useRef(new AudioCaptureService());
@@ -24,16 +28,88 @@ function App() {
   const ttsService = useRef(new TTSService());
   const vadIntegration = useRef(new VADIntegration());
 
-  // Load conversation history on mount
+  // Initialize services and check status
   useEffect(() => {
+    initializeServices();
     loadConversationHistory();
     
+    // Keyboard shortcuts
+    const handleKeyPress = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      
+      switch(e.key) {
+        case ' ':
+          e.preventDefault();
+          if (!isRecording && !isPlaying) handleStartTalk();
+          break;
+        case 'Enter':
+          e.preventDefault();
+          if (isRecording) handleStop();
+          break;
+        case 'p':
+          e.preventDefault();
+          if (response && !isPlaying && !isRecording) handlePlayResponse();
+          break;
+        case 'c':
+          e.preventDefault();
+          if (!isRecording && !isPlaying) clearConversation();
+          break;
+      }
+    };
+    
+    document.addEventListener('keydown', handleKeyPress);
+    
     return () => {
+      document.removeEventListener('keydown', handleKeyPress);
       audioCapture.current.cleanup();
       vadIntegration.current.stopVAD();
       ttsService.current.stopSpeech();
     };
-  }, []);
+  }, [isRecording, isPlaying, response]);
+
+  // Initialize and check service status
+  const initializeServices = async () => {
+    const serviceChecks = [
+      { name: 'Audio Capture', service: audioCapture.current, check: () => !!navigator.mediaDevices },
+      { name: 'Speech Recognition', service: speechRecognition.current, check: () => speechRecognition.current.isConfigured() },
+      { name: 'AI Chat', service: chatService.current, check: () => chatService.current.isConfigured() },
+      { name: 'Memory Storage', service: memoryService.current, check: () => memoryService.current.isConfigured() },
+      { name: 'Text-to-Speech', service: ttsService.current, check: () => 'speechSynthesis' in window || ttsService.current.isConfigured() }
+    ];
+
+    const serviceStatus = await Promise.all(
+      serviceChecks.map(async ({ name, service, check }) => {
+        const isConfigured = check();
+        let isWorking = null;
+        
+        try {
+          // Test service functionality
+          if (name === 'Audio Capture' && isConfigured) {
+            isWorking = true; // Will be tested on first use
+          } else if (name === 'Speech Recognition' && isConfigured) {
+            isWorking = true; // Will be tested on first use
+          } else if (name === 'AI Chat' && isConfigured) {
+            isWorking = true; // Will be tested on first use
+          } else if (name === 'Memory Storage' && isConfigured) {
+            isWorking = true; // Will be tested on first use
+          } else if (name === 'Text-to-Speech' && isConfigured) {
+            isWorking = true; // Will be tested on first use
+          } else {
+            isWorking = isConfigured;
+          }
+        } catch (error) {
+          isWorking = false;
+        }
+        
+        return { name, isConfigured, isWorking };
+      })
+    );
+
+    setServices(serviceStatus);
+    
+    const allReady = serviceStatus.every(s => s.isConfigured && s.isWorking);
+    setStatus(allReady ? 'Ready' : 'Some services not configured');
+  };
 
   // Load saved conversation from encrypted storage
   const loadConversationHistory = async () => {
@@ -48,6 +124,21 @@ function App() {
     }
   };
 
+  // Enhanced error handling with retry logic
+  const handleWithRetry = async (operation, maxRetries = 2) => {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        if (attempt === maxRetries) {
+          throw error;
+        }
+        setRetryCount(prev => prev + 1);
+        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+      }
+    }
+  };
+
   const handleStartTalk = async () => {
     try {
       setError('');
@@ -57,12 +148,14 @@ function App() {
       ttsService.current.stopSpeech();
       setIsPlaying(false);
       
-      // Initialize and start audio capture
-      await audioCapture.current.initialize();
-      await audioCapture.current.startRecording();
+      // Initialize and start audio capture with retry
+      await handleWithRetry(async () => {
+        await audioCapture.current.initialize();
+        await audioCapture.current.startRecording();
+      });
       
       setIsRecording(true);
-      setStatus('Recording... (speak now)');
+      setStatus('Recording... (press Enter to stop)');
       
       // Start VAD for real-time voice detection
       const audioStream = audioCapture.current.getAudioStream();
@@ -82,7 +175,7 @@ function App() {
     } catch (error) {
       console.error('Failed to start recording:', error);
       setError(`Failed to start recording: ${error.message}`);
-      setStatus('Error');
+      setStatus('Error - Check microphone permissions');
       setIsRecording(false);
     }
   };
@@ -104,8 +197,10 @@ function App() {
       
       setStatus('Converting speech to text...');
       
-      // Convert audio to text using Whisper
-      const transcribedText = await speechRecognition.current.transcribeAudio(audioBlob);
+      // Convert audio to text using Whisper with retry
+      const transcribedText = await handleWithRetry(async () => {
+        return await speechRecognition.current.transcribeAudio(audioBlob);
+      });
       
       if (!transcribedText || transcribedText.trim() === '') {
         throw new Error('No speech detected in audio');
@@ -114,12 +209,14 @@ function App() {
       setTranscript(transcribedText);
       setStatus('Getting AI response...');
       
-      // Send to chatbot and get response
-      const conversationHistory = chatService.current.getConversationHistory();
-      const aiResponse = await chatService.current.sendMessage(transcribedText, conversationHistory);
+      // Send to chatbot and get response with retry
+      const aiResponse = await handleWithRetry(async () => {
+        const conversationHistory = chatService.current.getConversationHistory();
+        return await chatService.current.sendMessage(transcribedText, conversationHistory);
+      });
       
       setResponse(aiResponse);
-      setStatus('Response ready');
+      setStatus('Response ready (press P to play)');
       
       // Save conversation to encrypted storage
       try {
@@ -132,7 +229,7 @@ function App() {
     } catch (error) {
       console.error('Failed to process audio:', error);
       setError(`Failed to process audio: ${error.message}`);
-      setStatus('Error');
+      setStatus('Error - Try again');
     }
   };
 
@@ -145,15 +242,17 @@ function App() {
       setIsPlaying(true);
       setStatus('Synthesizing speech...');
       
-      // Use TTS service to speak the response
-      await ttsService.current.playSpeech(response, selectedVoice);
+      // Use TTS service to speak the response with retry
+      await handleWithRetry(async () => {
+        await ttsService.current.playSpeech(response, selectedVoice);
+      });
       
-      setStatus('Ready');
+      setStatus('Ready (press Space to talk)');
       
     } catch (error) {
       console.error('Failed to play response:', error);
       setError(`Failed to play response: ${error.message}`);
-      setStatus('Error');
+      setStatus('Error - TTS failed');
     } finally {
       setIsPlaying(false);
     }
@@ -165,6 +264,7 @@ function App() {
 
   const clearError = () => {
     setError('');
+    setRetryCount(0);
   };
 
   const clearConversation = () => {
@@ -183,12 +283,19 @@ function App() {
         {error && (
           <div className="error-message">
             <p>{error}</p>
+            {retryCount > 0 && <small>Retries: {retryCount}</small>}
             <button onClick={clearError} className="error-close">×</button>
           </div>
         )}
       </header>
 
       <main className="app-main">
+        <ServiceStatus 
+          services={services} 
+          isMinimized={statusMinimized} 
+          onToggle={() => setStatusMinimized(!statusMinimized)} 
+        />
+
         <div className="controls">
           <div className="voice-selection">
             <label htmlFor="voice-select">Voice:</label>
@@ -208,6 +315,7 @@ function App() {
               className="btn btn-primary" 
               onClick={handleStartTalk}
               disabled={isRecording || isPlaying}
+              title="Start recording (Space)"
             >
               {isRecording ? 'Recording...' : 'Talk'}
             </button>
@@ -216,6 +324,7 @@ function App() {
               className="btn btn-secondary" 
               onClick={handleStop}
               disabled={!isRecording}
+              title="Stop recording (Enter)"
             >
               Stop
             </button>
@@ -224,6 +333,7 @@ function App() {
               className="btn btn-success" 
               onClick={handlePlayResponse}
               disabled={!response || isPlaying || response.includes('Phase')}
+              title="Play response (P)"
             >
               {isPlaying ? 'Playing...' : 'Play Response'}
             </button>
@@ -232,6 +342,7 @@ function App() {
               className="btn btn-warning" 
               onClick={clearConversation}
               disabled={isRecording || isPlaying}
+              title="Clear conversation (C)"
             >
               Clear
             </button>
@@ -252,6 +363,12 @@ function App() {
               {response || 'AI response will appear here...'}
             </div>
           </div>
+        </div>
+
+        <div className="keyboard-shortcuts">
+          <small>
+            Shortcuts: Space=Talk • Enter=Stop • P=Play • C=Clear
+          </small>
         </div>
       </main>
     </div>

@@ -245,3 +245,378 @@ body {
     width: 100%;
   }
 }
+
+/* Service Status Panel */
+.service-status-panel {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: rgba(0, 0, 0, 0.9);
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 16px;
+  min-width: 200px;
+  z-index: 1000;
+  font-size: 0.9em;
+}
+
+.service-status-minimized {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: rgba(0, 0, 0, 0.8);
+  border: 1px solid #333;
+  border-radius: 20px;
+  padding: 8px 12px;
+  cursor: pointer;
+  z-index: 1000;
+  font-size: 0.8em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.service-status-minimized:hover {
+  background: rgba(0, 0, 0, 0.95);
+}
+
+.status-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.status-header h4 {
+  margin: 0;
+  font-size: 1em;
+  color: #fff;
+}
+
+.minimize-btn {
+  background: none;
+  border: none;
+  color: #ccc;
+  cursor: pointer;
+  font-size: 1.2em;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.minimize-btn:hover {
+  color: #fff;
+}
+
+.status-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.status-icon {
+  font-size: 1.1em;
+  width: 20px;
+  text-align: center;
+}
+
+.status-info {
+  flex: 1;
+}
+
+.service-name {
+  font-weight: 500;
+  color: #fff;
+  font-size: 0.9em;
+}
+
+.service-status {
+  font-size: 0.8em;
+  opacity: 0.8;
+}
+
+.status-ready .service-status {
+  color: #4ade80;
+}
+
+.status-warning .service-status {
+  color: #fbbf24;
+}
+
+.status-error .service-status {
+  color: #f87171;
+}
+
+.status-pending .service-status {
+  color: #60a5fa;
+}
+
+.status-legend {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid #333;
+  color: #888;
+  text-align: center;
+}
+
+/* Enhanced Button Styles */
+.btn {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.btn:active {
+  transform: translateY(0);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+  transition: left 0.5s;
+}
+
+.btn:hover::before {
+  left: 100%;
+}
+
+/* Recording Animation */
+.btn-primary[disabled] {
+  background: #dc2626;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* Enhanced Error Messages */
+.error-message {
+  background: linear-gradient(135deg, #dc2626, #b91c1c);
+  border: 1px solid #ef4444;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin: 8px 0;
+  position: relative;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.error-message small {
+  display: block;
+  margin-top: 4px;
+  opacity: 0.8;
+  font-size: 0.8em;
+}
+
+.error-close {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 1.2em;
+  cursor: pointer;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.error-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+}
+
+/* Enhanced Status Display */
+.status {
+  font-weight: 500;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: all 0.3s ease;
+}
+
+/* Conversation Boxes Enhancement */
+.transcript-box, .response-box {
+  border: 2px solid #333;
+  border-radius: 8px;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.3);
+  min-height: 80px;
+  transition: border-color 0.3s ease;
+}
+
+.transcript-box:not(:empty) {
+  border-color: #3b82f6;
+}
+
+.response-box:not(:empty) {
+  border-color: #10b981;
+}
+
+/* Keyboard Shortcuts */
+.keyboard-shortcuts {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.8);
+  padding: 8px 16px;
+  border-radius: 20px;
+  border: 1px solid #333;
+  color: #ccc;
+  font-size: 0.8em;
+  z-index: 1000;
+}
+
+/* Accessibility Improvements */
+.btn:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+.voice-selection select:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* Loading States */
+.btn[disabled]:not(.btn-primary) {
+  position: relative;
+}
+
+.btn[disabled]:not(.btn-primary)::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  border: 2px solid transparent;
+  border-top: 2px solid #fff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .service-status-panel {
+    position: static;
+    margin: 16px;
+    width: calc(100% - 32px);
+  }
+  
+  .service-status-minimized {
+    position: static;
+    margin: 16px auto;
+    width: fit-content;
+  }
+  
+  .keyboard-shortcuts {
+    position: static;
+    margin: 16px auto;
+    width: fit-content;
+    transform: none;
+  }
+  
+  .action-buttons {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  
+  .btn {
+    min-width: 100px;
+  }
+}
+
+/* High Contrast Mode */
+@media (prefers-contrast: high) {
+  .service-status-panel,
+  .service-status-minimized {
+    background: #000;
+    border: 2px solid #fff;
+  }
+  
+  .status-ready .service-status {
+    color: #00ff00;
+  }
+  
+  .status-warning .service-status {
+    color: #ffff00;
+  }
+  
+  .status-error .service-status {
+    color: #ff0000;
+  }
+}
+
+/* Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  .btn,
+  .error-message,
+  .transcript-box,
+  .response-box {
+    transition: none;
+  }
+  
+  .btn:hover {
+    transform: none;
+  }
+  
+  .btn::before {
+    display: none;
+  }
+  
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.8; }
+  }
+}
