@@ -1,7 +1,94 @@
+# Dependencies
 node_modules/
 venv/
-*.pyc
-.env
+__pycache__/
+*.egg-info/
 
-infra/deployment-package.zip
+# Build artifacts
+dist/
+build/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Package files
+*.egg
+*.zip
+*.tar.gz
+*.tgz
+*.tar
+*.whl
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Coverage reports
+coverage/
+*.lcov
+.nyc_output/
+htmlcov/
+.coverage
+.coverage.*
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+.tmp/
+.temp/
+tmp/
+temp/
+
+# Lock files (keep package-lock.json but ignore others)
+yarn.lock
+pnpm-lock.yaml
+
+# AWS/Lambda specific
 lambda_package/
+infra/deployment-package.zip
+
+# Python specific
+.pytest_cache/
+.mypy_cache/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Node.js specific
+.npm
+.eslintcache
+.node_repl_history
+.yarn-integrity
+
+# Jest
+jest_*
