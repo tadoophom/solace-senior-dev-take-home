@@ -21,15 +21,15 @@ resource "aws_iam_policy" "lambda_policy" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid      = "AllowS3Read"
+        Sid      = "AllowS3ReadWrite"
         Effect   = "Allow"
-        Action   = ["s3:GetObject"]
+        Action   = ["s3:GetObject", "s3:PutObject"]
         Resource = ["${aws_s3_bucket.blobs.arn}/*"]
       },
       {
-        Sid      = "AllowKMSDecrypt"
+        Sid      = "AllowKMSDecryptEncrypt"
         Effect   = "Allow"
-        Action   = ["kms:Decrypt"]
+        Action   = ["kms:Decrypt", "kms:Encrypt"]
         Resource = [aws_kms_key.decrypt.arn]
       },
       {

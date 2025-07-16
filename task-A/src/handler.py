@@ -3,9 +3,12 @@ import os
 import base64
 import boto3
 from botocore.exceptions import ClientError
-from aws_lambda_powertools import Logger
+import logging
+import uuid
 
-logger = Logger()
+# Set up logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 def handler(event, context):
     """
@@ -43,6 +46,7 @@ def handler(event, context):
         
         # Get environment variables
         bucket_name = os.environ.get("BUCKET")
+        kms_key_id = os.environ.get("KEY_ID")
         if not bucket_name:
             logger.error("BUCKET environment variable not set")
             return {

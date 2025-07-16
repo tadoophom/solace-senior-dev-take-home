@@ -8,12 +8,6 @@ import { encryptBlob, decryptBlob } from './crypto.js';
  * @returns {Promise<string>} blobKey for retrieval
  */
 async function uploadBlob(blob, apiUrl) {
-  // Mock mode for demo when API URL is placeholder
-  if (apiUrl.includes('xxxxx')) {
-    console.log('Mock mode: simulating blob upload');
-    return 'mock-blob-key-' + Date.now();
-  }
-
   const response = await fetch(apiUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/octet-stream' },
@@ -22,7 +16,8 @@ async function uploadBlob(blob, apiUrl) {
   if (!response.ok) {
     throw new Error(`Upload failed: ${response.status}`);
   }
-  return response.text();
+  const result = await response.json();
+  return result.blobKey;
 }
 
 /**
@@ -33,12 +28,6 @@ async function uploadBlob(blob, apiUrl) {
  * @returns {Promise<string>} decrypted plaintext
  */
 async function downloadAndDecrypt(blobKey, apiUrl, keyBytes) {
-  // Mock mode for demo when API URL is placeholder
-  if (apiUrl.includes('xxxxx')) {
-    console.log('Mock mode: simulating blob download and decrypt');
-    return 'Mock decrypted content: This would be the decrypted audio data from the server.';
-  }
-
   const response = await fetch(apiUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
