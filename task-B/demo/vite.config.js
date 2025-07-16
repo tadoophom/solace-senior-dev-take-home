@@ -6,8 +6,14 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@solace/client-sdk': path.resolve(__dirname, '../dist/esm/index.js')
+      '@solace/client-sdk': path.resolve(__dirname, '../src')
     }
+  },
+  define: {
+    global: 'globalThis',
+  },
+  optimizeDeps: {
+    exclude: ['node-record-lpcm16', 'webrtcvad']
   },
   server: {
     port: 5173

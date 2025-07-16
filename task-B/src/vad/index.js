@@ -1,12 +1,15 @@
-/* VAD public facade – automatically picks browser or Node implementation */
-let recordAndDetectVoice;
+import { recordAndDetectVoiceBrowser as browserRecordAndDetectVoice } from '../vadBrowser.js';
 
-if (typeof window !== 'undefined' && typeof navigator !== 'undefined') {
-  // Browser environment
-  ({ recordAndDetectVoice } = require('../vadBrowser'));
-} else {
-  // Node / server environment
-  ({ recordAndDetectVoice } = require('../vad'));
-}
-
-module.exports = { recordAndDetectVoice }; 
+/**
+ * Public VAD facade: selects browser or Node implementation.
+ */
+export const recordAndDetectVoice = async function* (...args) {
+  if (typeof window !== 'undefined' && typeof navigator !== 'undefined') {
+    // Browser environment - use browser implementation
+    yield* browserRecordAndDetectVoice(...args);
+  } else {
+    // Node.js environment - dynamically import Node implementation
+    const { recordAndDetectVoice: nodeRecordAndDetectVoice } = await import('../vad.js');
+    yield* nodeRecordAndDetectVoice(...args);
+  }
+}; 

@@ -87,4 +87,4 @@ async function* recordAndDetectVoiceBrowser(opts = {}) {
   }
 }
 
-module.exports = { recordAndDetectVoiceBrowser }; 
+export { recordAndDetectVoiceBrowser }; 

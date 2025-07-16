@@ -6,8 +6,8 @@
  * objects: { frame: ArrayBuffer, timestamp: number }
  */
 
-const record = require('node-record-lpcm16');
-const WebRtcVad = require('webrtcvad');
+import record from 'node-record-lpcm16';
+import WebRtcVad from 'webrtcvad';
 
 const SAMPLE_RATE = 16_000;             // Hz – required by webrtcvad
 const FRAME_DURATION_MS = 30;           // 10 / 20 / 30 ms supported by VAD
@@ -52,5 +52,5 @@ async function* recordAndDetectVoice() {
     }
   }
 }
-module.exports = { recordAndDetectVoice };
+export { recordAndDetectVoice };
 

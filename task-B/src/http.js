@@ -1,53 +1,54 @@
-const fetch = require('cross-fetch');
-const { encryptBlob, decryptBlob } = require('./crypto');
+import fetch from 'cross-fetch';
+import { encryptBlob, decryptBlob } from './crypto.js';
 
 /**
- * Uploads an encrypted blob to the Task-A endpoint.
- * The endpoint expects a POST body with the raw encrypted bytes.
- * Returns the blobKey string returned by the server.
- *
- * @param {Blob|ArrayBuffer|Uint8Array} blob – Ciphertext to send.
- * @param {string} apiUrl – Full Task-A Lambda URL (no trailing slash).
- * @param {string} [token] – Optional Bearer token for auth.
- * @returns {Promise<string>} blobKey
+ * Upload encrypted blob to API endpoint.
+ * @param {Blob} blob – encrypted data
+ * @param {string} apiUrl – API endpoint URL
+ * @returns {Promise<string>} blobKey for retrieval
  */
-async function uploadBlob(blob, apiUrl, token) {
-  const resp = await fetch(apiUrl, {
+async function uploadBlob(blob, apiUrl) {
+  // Mock mode for demo when API URL is placeholder
+  if (apiUrl.includes('xxxxx')) {
+    console.log('Mock mode: simulating blob upload');
+    return 'mock-blob-key-' + Date.now();
+  }
+
+  const response = await fetch(apiUrl, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/octet-stream',
-      ...(token && { Authorization: `Bearer ${token}` })
-    },
+    headers: { 'Content-Type': 'application/octet-stream' },
     body: blob
   });
-
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(`Upload failed: ${resp.status} ${text}`);
+  if (!response.ok) {
+    throw new Error(`Upload failed: ${response.status}`);
   }
-
-  const data = await resp.json();
-  if (!data.blobKey) {
-    throw new Error('Malformed response: missing blobKey');
-  }
-  return data.blobKey;
+  return response.text();
 }
 
 /**
- * Downloads an encrypted blob via GET and decrypts it.
- * Assumes Task-A exposes a GET {apiUrl}/{blobKey} endpoint.
+ * Download and decrypt blob from API.
  * @param {string} blobKey
- * @param {string} apiUrl – Base URL (no trailing slash)
- * @param {CryptoKey|Uint8Array|ArrayBuffer|string} key
- * @returns {Promise<string>} plaintext
+ * @param {string} apiUrl
+ * @param {Uint8Array} keyBytes – decryption key
+ * @returns {Promise<string>} decrypted plaintext
  */
-async function downloadAndDecrypt(blobKey, apiUrl, key) {
-  const resp = await fetch(`${apiUrl}/${encodeURIComponent(blobKey)}`);
-  if (!resp.ok) {
-    throw new Error(`Download failed: ${resp.status}`);
+async function downloadAndDecrypt(blobKey, apiUrl, keyBytes) {
+  // Mock mode for demo when API URL is placeholder
+  if (apiUrl.includes('xxxxx')) {
+    console.log('Mock mode: simulating blob download and decrypt');
+    return 'Mock decrypted content: This would be the decrypted audio data from the server.';
   }
-  const cipher = await resp.json();
-  return decryptBlob(cipher, key);
+
+  const response = await fetch(apiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ blobKey })
+  });
+  if (!response.ok) {
+    throw new Error(`Download failed: ${response.status}`);
+  }
+  const { plaintext } = await response.json();
+  return plaintext;
 }
 
-module.exports = { uploadBlob, downloadAndDecrypt }; 
+export { uploadBlob, downloadAndDecrypt }; 

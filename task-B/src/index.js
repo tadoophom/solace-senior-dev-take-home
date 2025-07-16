@@ -1,11 +1,12 @@
 /**
  * @module @solace/client-sdk
  */
-const { encryptBlob, decryptBlob } = require('./crypto');
-const { recordAndDetectVoice } = require('./vad/index');
-const { uploadBlob, downloadAndDecrypt } = require('./http');
+import { encryptBlob, decryptBlob } from './crypto.js';
+import { recordAndDetectVoice } from './vad/index.js';
+import { uploadBlob, downloadAndDecrypt } from './http.js';
 
-module.exports = {
+// Public SDK interface
+export {
   encryptBlob,
   decryptBlob,
   recordAndDetectVoice,

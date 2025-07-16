@@ -32,7 +32,7 @@ async function getKey(keyMaterial) {
   }
   let raw;
   if (typeof keyMaterial === 'string') {
-    raw = Buffer.from(keyMaterial, 'base64');
+    raw = fromBase64(keyMaterial);
   } else if (keyMaterial instanceof ArrayBuffer) {
     raw = new Uint8Array(keyMaterial);
   } else if (ArrayBuffer.isView(keyMaterial)) {
@@ -53,11 +53,21 @@ async function getKey(keyMaterial) {
 }
 
 function toBase64(ab) {
-  return Buffer.from(ab).toString('base64');
+  const uint8Array = new Uint8Array(ab);
+  let binary = '';
+  for (let i = 0; i < uint8Array.length; i++) {
+    binary += String.fromCharCode(uint8Array[i]);
+  }
+  return btoa(binary);
 }
 
 function fromBase64(b64) {
-  return Buffer.from(b64, 'base64');
+  const binary = atob(b64);
+  const uint8Array = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    uint8Array[i] = binary.charCodeAt(i);
+  }
+  return uint8Array;
 }
 
 /**
@@ -69,7 +79,7 @@ function fromBase64(b64) {
 async function encryptBlob(data, keyMaterial) {
   const key = await getKey(keyMaterial);
   const iv = webcrypto.getRandomValues(new Uint8Array(12)); // 96-bit IV recommended for GCM
-  const plainBytes = typeof data === 'string' ? Buffer.from(data, 'utf8') : new Uint8Array(data);
+  const plainBytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
   const cipherBuf = await subtle.encrypt({ name: 'AES-GCM', iv }, key, plainBytes);
   const cipherBytes = new Uint8Array(cipherBuf);
   // Split ciphertext and tag (last 16 bytes)
@@ -94,9 +104,9 @@ async function decryptBlob(cipher, keyMaterial) {
   const ivBytes = fromBase64(iv);
   const ctBytes = fromBase64(ciphertext);
   const tagBytes = fromBase64(tag);
-  const combined = Buffer.concat([ctBytes, tagBytes]);
+  const combined = new Uint8Array([...ctBytes, ...tagBytes]);
   const plainBuf = await subtle.decrypt({ name: 'AES-GCM', iv: ivBytes }, key, combined);
-  return Buffer.from(plainBuf).toString('utf8');
+  return new TextDecoder().decode(plainBuf);
 }
 
 // Export named functions for ES Module compatibility

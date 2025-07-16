@@ -22,20 +22,25 @@ export default function App() {
 
   async function handleStopUpload() {
     setRecording(false);
-    // Concatenate Uint8Array frames into a single Uint8Array
-    const totalLength = frames.reduce((sum, arr) => sum + arr.length, 0);
-    const combined = new Uint8Array(totalLength);
-    let offset = 0;
-    for (const arr of frames) {
-      combined.set(arr, offset);
-      offset += arr.length;
-    }
+    try {
+      // Concatenate Uint8Array frames into a single Uint8Array
+      const totalLength = frames.reduce((sum, arr) => sum + arr.length, 0);
+      const combined = new Uint8Array(totalLength);
+      let offset = 0;
+      for (const arr of frames) {
+        combined.set(arr, offset);
+        offset += arr.length;
+      }
 
-    const keyBytes = Uint8Array.from(atob(ENC_KEY), c=>c.charCodeAt(0));
-    const cipher = await encryptBlob(combined, keyBytes);
-    const blob = new Blob([JSON.stringify(cipher)], { type: 'application/json' });
-    const key = await uploadBlob(blob, API_URL);
-    setBlobKey(key);
+      const keyBytes = Uint8Array.from(atob(ENC_KEY), c=>c.charCodeAt(0));
+      const cipher = await encryptBlob(combined, keyBytes);
+      const blob = new Blob([JSON.stringify(cipher)], { type: 'application/json' });
+      const key = await uploadBlob(blob, API_URL);
+      setBlobKey(key);
+    } catch (error) {
+      console.error('Error in handleStopUpload:', error);
+      alert('Error processing audio: ' + error.message);
+    }
   }
 
   async function handleFetch() {
