@@ -16,9 +16,12 @@ def handler(event, context):
     - POST with binary data (Content-Type: application/octet-stream): Upload blob
     - POST with JSON body containing blobKey: Download/decrypt blob
     """
-    # Basic headers (CORS handled by Function URL configuration)
+    # CORS headers for all responses
     headers = {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type"
     }
     
     try:
