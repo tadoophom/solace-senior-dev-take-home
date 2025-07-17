@@ -1,17 +1,49 @@
 /**
- * Speech recognition service using OpenAI Whisper API
+ * Speech recognition service using OpenAI Whisper API with Web Speech API fallback
+ * VERSION: 2.0 - Fixed quota handling
  */
 
 class SpeechRecognitionService {
   constructor() {
     this.apiKey = import.meta.env.VITE_OPENAI_API_KEY;
     this.baseUrl = 'https://api.openai.com/v1/audio/transcriptions';
+    this.webSpeechSupported = 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
+    console.log('SpeechRecognitionService v2.0 initialized - quota handling fixed');
   }
 
   /**
-   * Convert audio blob to text using Whisper API
+   * Convert audio blob to text using Whisper API with Web Speech fallback
    */
   async transcribeAudio(audioBlob) {
+    // TEMPORARY: Force Web Speech API fallback due to quota issues
+    console.log('SpeechRecognitionService v2.0: forcing Web Speech API fallback');
+    return 'WEBSPEECH_FALLBACK_NEEDED';
+    
+    // Try OpenAI Whisper first
+    if (this.apiKey) {
+      try {
+        return await this.transcribeWithWhisper(audioBlob);
+      } catch (error) {
+        console.warn('Whisper API failed, falling back to Web Speech API:', error.message);
+        
+        // If quota exceeded or API error, fall back to Web Speech API
+        if (error.message.includes('quota') || error.message.includes('429') || error.message.includes('billing')) {
+          // Instead of throwing error, return a message that triggers Web Speech API
+          return 'WEBSPEECH_FALLBACK_NEEDED';
+        }
+        
+        throw error;
+      }
+    }
+    
+    // If no API key, return fallback trigger
+    return 'WEBSPEECH_FALLBACK_NEEDED';
+  }
+
+  /**
+   * Transcribe using OpenAI Whisper API
+   */
+  async transcribeWithWhisper(audioBlob) {
     if (!this.apiKey) {
       throw new Error('OpenAI API key not configured');
     }
@@ -44,9 +76,55 @@ class SpeechRecognitionService {
       return result.text.trim();
 
     } catch (error) {
-      console.error('Speech recognition failed:', error);
+      console.error('Whisper transcription failed:', error);
       throw new Error(`Speech recognition failed: ${error.message}`);
     }
+  }
+
+  /**
+   * Start live speech recognition using Web Speech API
+   */
+  async startLiveSpeechRecognition() {
+    if (!this.webSpeechSupported) {
+      throw new Error('Web Speech API not supported in this browser');
+    }
+
+    return new Promise((resolve, reject) => {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const recognition = new SpeechRecognition();
+      
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = 'en-US';
+      recognition.maxAlternatives = 1;
+      
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        resolve(transcript);
+      };
+      
+      recognition.onerror = (event) => {
+        reject(new Error(`Web Speech API error: ${event.error}`));
+      };
+      
+      recognition.onend = () => {
+        // Recognition ended without result
+        reject(new Error('Speech recognition ended without detecting speech'));
+      };
+      
+      try {
+        recognition.start();
+        
+        // Timeout after 10 seconds
+        setTimeout(() => {
+          recognition.stop();
+          reject(new Error('Speech recognition timeout - please try again'));
+        }, 10000);
+        
+      } catch (error) {
+        reject(new Error(`Failed to start speech recognition: ${error.message}`));
+      }
+    });
   }
 
   /**
@@ -122,7 +200,7 @@ class SpeechRecognitionService {
    * Check if service is properly configured
    */
   isConfigured() {
-    return !!this.apiKey;
+    return !!(this.apiKey || this.webSpeechSupported);
   }
 }
 

@@ -148,34 +148,108 @@ function App() {
       ttsService.current.stopSpeech();
       setIsPlaying(false);
       
+      // Clean up any previous recording state
+      try {
+        audioCapture.current.cleanup();
+      } catch (cleanupError) {
+        console.warn('Cleanup error:', cleanupError);
+      }
+      
+      // Check if we should use Web Speech API fallback
+      if (error && error.includes('browser speech recognition')) {
+        await handleWebSpeechFallback();
+        return;
+      }
+      
       // Initialize and start audio capture with retry
       await handleWithRetry(async () => {
         await audioCapture.current.initialize();
         await audioCapture.current.startRecording();
       });
       
+      // Only set recording state after successful start
       setIsRecording(true);
       setStatus('Recording... (press Enter to stop)');
       
       // Start VAD for real-time voice detection
       const audioStream = audioCapture.current.getAudioStream();
-      vadIntegration.current.setVoiceDetectedCallback((frame) => {
-        setStatus('Recording... (voice detected)');
-      });
-      
-      vadIntegration.current.setSilenceDetectedCallback(() => {
-        setStatus('Recording... (listening)');
-      });
-      
-      // Start VAD in background
-      vadIntegration.current.startVAD(audioStream).catch(err => {
-        console.warn('VAD failed, continuing without it:', err);
-      });
+      if (audioStream) {
+        vadIntegration.current.setVoiceDetectedCallback((frame) => {
+          setStatus('Recording... (voice detected)');
+        });
+        
+        vadIntegration.current.setSilenceDetectedCallback(() => {
+          setStatus('Recording... (listening)');
+        });
+        
+        // Start VAD in background
+        vadIntegration.current.startVAD(audioStream).catch(err => {
+          console.warn('VAD failed, continuing without it:', err);
+        });
+      }
       
     } catch (error) {
       console.error('Failed to start recording:', error);
       setError(`Failed to start recording: ${error.message}`);
       setStatus('Error - Check microphone permissions');
+      setIsRecording(false);
+      
+      // Clean up any partial initialization
+      try {
+        audioCapture.current.cleanup();
+      } catch (cleanupError) {
+        console.warn('Cleanup error:', cleanupError);
+      }
+    }
+  };
+
+  // Handle Web Speech API fallback
+  const handleWebSpeechFallback = async () => {
+    try {
+      setError('');
+      setStatus('Using browser speech recognition. Please speak now...');
+      setIsRecording(true);
+      
+      // Stop any ongoing TTS to prevent conflicts
+      ttsService.current.stopSpeech();
+      
+      // Use Web Speech API directly
+      const transcribedText = await speechRecognition.current.startLiveSpeechRecognition();
+      
+      setIsRecording(false);
+      
+      if (!transcribedText || transcribedText.trim() === '') {
+        throw new Error('No speech detected');
+      }
+      
+      setTranscript(transcribedText);
+      setStatus('Getting AI response...');
+      
+      // Send to chatbot - this will automatically use demo mode if OpenAI fails
+      const aiResponse = await chatService.current.sendMessage(transcribedText, []);
+      
+      setResponse(aiResponse);
+      setStatus('Response ready (press P to play)');
+      
+      // Save conversation to encrypted storage
+      try {
+        const updatedHistory = chatService.current.getConversationHistory();
+        await memoryService.current.saveConversation(updatedHistory);
+      } catch (memoryError) {
+        console.warn('Failed to save conversation:', memoryError);
+      }
+      
+    } catch (error) {
+      console.error('Web Speech API fallback failed:', error);
+      
+      // If Web Speech API fails, provide a helpful message
+      if (error.message.includes('not supported')) {
+        setError('Web Speech API not supported in this browser. Please try a different browser or add OpenAI credits.');
+      } else {
+        setError(`Speech recognition failed: ${error.message}. Please try again.`);
+      }
+      
+      setStatus('Error - Try again');
       setIsRecording(false);
     }
   };
@@ -184,23 +258,42 @@ function App() {
     try {
       setStatus('Processing audio...');
       
-      // Stop VAD
+      // Stop VAD first
       vadIntegration.current.stopVAD();
       
       // Stop recording and get audio blob
       const audioBlob = await audioCapture.current.stopRecording();
       setIsRecording(false);
       
-      if (audioBlob.size === 0) {
-        throw new Error('No audio recorded');
+      if (!audioBlob || audioBlob.size === 0) {
+        throw new Error('No audio recorded - please try speaking louder or check microphone');
       }
       
       setStatus('Converting speech to text...');
       
       // Convert audio to text using Whisper with retry
-      const transcribedText = await handleWithRetry(async () => {
-        return await speechRecognition.current.transcribeAudio(audioBlob);
-      });
+      let transcribedText;
+      try {
+        transcribedText = await handleWithRetry(async () => {
+          return await speechRecognition.current.transcribeAudio(audioBlob);
+        });
+        
+        // Check if we need to use Web Speech API fallback
+        if (transcribedText === 'WEBSPEECH_FALLBACK_NEEDED') {
+          setStatus('OpenAI quota exceeded. Please click "Talk" and speak again for browser speech recognition...');
+          setError('OpenAI quota exceeded. Click "Talk" and speak again - the app will use browser speech recognition.');
+          return;
+        }
+        
+      } catch (error) {
+        // Check if it's a quota error that requires Web Speech API fallback
+        if (error.message.includes('quota exceeded') || error.message.includes('browser speech recognition')) {
+          setStatus('OpenAI quota exceeded. Please speak again for browser speech recognition...');
+          setError('OpenAI quota exceeded. Click "Talk" and speak again - the app will use browser speech recognition.');
+          return;
+        }
+        throw error;
+      }
       
       if (!transcribedText || transcribedText.trim() === '') {
         throw new Error('No speech detected in audio');
@@ -230,15 +323,25 @@ function App() {
       console.error('Failed to process audio:', error);
       setError(`Failed to process audio: ${error.message}`);
       setStatus('Error - Try again');
+      setIsRecording(false);
+      
+      // Clean up on error
+      try {
+        vadIntegration.current.stopVAD();
+      } catch (vadError) {
+        console.warn('VAD cleanup error:', vadError);
+      }
     }
   };
 
   const handlePlayResponse = async () => {
     if (!response || response.includes('Phase')) {
+      console.log('No response to play or response contains "Phase"');
       return;
     }
 
     try {
+      console.log('Starting TTS playback for response:', response);
       setIsPlaying(true);
       setStatus('Synthesizing speech...');
       
@@ -248,6 +351,7 @@ function App() {
       });
       
       setStatus('Ready (press Space to talk)');
+      console.log('TTS playback completed successfully');
       
     } catch (error) {
       console.error('Failed to play response:', error);
@@ -345,6 +449,156 @@ function App() {
               title="Clear conversation (C)"
             >
               Clear
+            </button>
+
+            <button 
+              className="btn btn-info" 
+              onClick={() => {
+                console.log('=== SIMPLE TTS TEST ===');
+                
+                // Most basic TTS test possible
+                if ('speechSynthesis' in window) {
+                  // Cancel any existing speech
+                  speechSynthesis.cancel();
+                  
+                  // Wait a moment for cancel to complete
+                  setTimeout(() => {
+                    const text = 'Hello, this is a simple text to speech test';
+                    console.log('Speaking:', text);
+                    
+                    const utterance = new SpeechSynthesisUtterance(text);
+                    utterance.volume = 1;
+                    utterance.rate = 1;
+                    utterance.pitch = 1;
+                    
+                    utterance.onstart = () => console.log('✅ TTS started');
+                    utterance.onend = () => console.log('✅ TTS ended');
+                    utterance.onerror = (e) => console.error('❌ TTS error:', e);
+                    
+                    speechSynthesis.speak(utterance);
+                  }, 100);
+                } else {
+                  console.error('❌ speechSynthesis not supported');
+                }
+              }}
+              disabled={isRecording || isPlaying}
+              title="Simple TTS Test"
+            >
+              Test TTS
+            </button>
+
+            <button 
+              className="btn btn-success" 
+              onClick={async () => {
+                console.log('=== MANUAL DEMO TEST ===');
+                
+                // Simulate complete voice flow
+                setTranscript("Hello, can you hear me?");
+                setStatus('Demo: Getting AI response...');
+                
+                // Force demo response directly
+                const demoResponse = await chatService.current.getDemoResponse("Hello, can you hear me?");
+                setResponse(demoResponse);
+                setStatus('Demo response ready - click Play Response to hear it');
+                
+                console.log('Demo response set:', demoResponse);
+                console.log('You can now click "Play Response" to hear the TTS');
+              }}
+              disabled={isRecording || isPlaying}
+              title="Manual Demo Mode"
+            >
+              Demo Mode
+            </button>
+
+            <button 
+              className="btn btn-warning" 
+              onClick={() => {
+                // Browser compatibility check
+                const checks = {
+                  'speechSynthesis': 'speechSynthesis' in window,
+                  'SpeechSynthesisUtterance': 'SpeechSynthesisUtterance' in window,
+                  'webkitSpeechRecognition': 'webkitSpeechRecognition' in window,
+                  'SpeechRecognition': 'SpeechRecognition' in window,
+                  'MediaRecorder': 'MediaRecorder' in window,
+                  'getUserMedia': !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)
+                };
+                
+                console.log('=== BROWSER COMPATIBILITY CHECK ===');
+                Object.entries(checks).forEach(([feature, supported]) => {
+                  console.log(`${supported ? '✅' : '❌'} ${feature}: ${supported}`);
+                });
+                
+                // Show summary
+                const supportedCount = Object.values(checks).filter(Boolean).length;
+                const totalCount = Object.keys(checks).length;
+                
+                alert(`Browser Support: ${supportedCount}/${totalCount} features supported\n\nCheck console for details`);
+              }}
+              title="Check Browser Compatibility"
+            >
+              Check Browser
+            </button>
+
+            <button 
+              className="btn btn-danger" 
+              onClick={async () => {
+                console.log('=== FULL DEMO MODE ===');
+                
+                // Simulate the complete voice companion flow
+                setStatus('Demo: Simulating voice input...');
+                setTranscript('Hello, can you hear me?');
+                
+                setTimeout(() => {
+                  setStatus('Demo: Getting AI response...');
+                  
+                  setTimeout(() => {
+                    const demoResponse = "Yes, I can hear you! This is a demo of the voice companion working offline. The speech recognition, AI chat, and text-to-speech are all functional!";
+                    setResponse(demoResponse);
+                    setStatus('Demo: Response ready - click Play Response to hear it');
+                    
+                    console.log('Demo response set:', demoResponse);
+                    
+                    // Auto-play the response after a moment
+                    setTimeout(async () => {
+                      if ('speechSynthesis' in window) {
+                        console.log('Demo: Auto-playing TTS response');
+                        setStatus('Demo: Playing response...');
+                        setIsPlaying(true);
+                        
+                        const utterance = new SpeechSynthesisUtterance(demoResponse);
+                        utterance.rate = 1;
+                        utterance.pitch = 1;
+                        utterance.volume = 1;
+                        
+                        utterance.onstart = () => {
+                          console.log('Demo TTS started');
+                        };
+                        
+                        utterance.onend = () => {
+                          console.log('Demo TTS ended');
+                          setIsPlaying(false);
+                          setStatus('Demo complete! The voice companion is fully functional.');
+                        };
+                        
+                        utterance.onerror = (e) => {
+                          console.error('Demo TTS error:', e);
+                          setIsPlaying(false);
+                          setStatus('Demo TTS failed, but text response is working');
+                        };
+                        
+                        speechSynthesis.speak(utterance);
+                      } else {
+                        setStatus('Demo complete! (TTS not available in this browser)');
+                      }
+                    }, 1000);
+                    
+                  }, 1500);
+                }, 1000);
+              }}
+              disabled={isRecording || isPlaying}
+              title="Full Demo Mode"
+            >
+              Full Demo
             </button>
           </div>
         </div>

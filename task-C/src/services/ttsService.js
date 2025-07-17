@@ -103,6 +103,9 @@ class TTSService {
    * Synthesize speech using AWS Polly (fallback to Web Speech API)
    */
   async synthesizeSpeech(text, voiceType = 'female') {
+    // Stop any ongoing speech first
+    this.stopSpeech();
+    
     // Try Web Speech API first (simpler and more reliable)
     if ('speechSynthesis' in window) {
       return this.synthesizeWithWebAPI(text, voiceType);
@@ -126,28 +129,76 @@ class TTSService {
         return;
       }
 
+      // Cancel any ongoing speech
+      speechSynthesis.cancel();
+
       const utterance = new SpeechSynthesisUtterance(text);
       
-      // Configure voice
-      const voices = speechSynthesis.getVoices();
-      const preferredVoice = voices.find(voice => 
-        voiceType === 'female' 
-          ? voice.name.toLowerCase().includes('female') || voice.name.toLowerCase().includes('samantha')
-          : voice.name.toLowerCase().includes('male') || voice.name.toLowerCase().includes('alex')
-      );
-      
-      if (preferredVoice) {
-        utterance.voice = preferredVoice;
+      // Wait for voices to be loaded
+      const setVoiceAndSpeak = () => {
+        const voices = speechSynthesis.getVoices();
+        
+        if (voices.length > 0) {
+          // Find preferred voice
+          const preferredVoice = voices.find(voice => {
+            const voiceName = voice.name.toLowerCase();
+            if (voiceType === 'female') {
+              return voiceName.includes('female') || voiceName.includes('samantha') || voiceName.includes('susan') || voiceName.includes('karen');
+            } else {
+              return voiceName.includes('male') || voiceName.includes('alex') || voiceName.includes('david') || voiceName.includes('daniel');
+            }
+          });
+          
+          if (preferredVoice) {
+            utterance.voice = preferredVoice;
+          } else {
+            // Fallback to first available voice of preferred gender
+            const fallbackVoice = voices.find(voice => {
+              return voiceType === 'female' ? !voice.name.toLowerCase().includes('male') : voice.name.toLowerCase().includes('male');
+            });
+            if (fallbackVoice) {
+              utterance.voice = fallbackVoice;
+            }
+          }
+        }
+        
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+        utterance.volume = 1.0;
+        
+        utterance.onend = () => {
+          console.log('Speech synthesis completed');
+          resolve();
+        };
+        
+        utterance.onerror = (error) => {
+          console.error('Speech synthesis error:', error);
+          reject(new Error(`Speech synthesis failed: ${error.error}`));
+        };
+        
+        utterance.onstart = () => {
+          console.log('Speech synthesis started');
+        };
+        
+        console.log('Starting speech synthesis with text:', text);
+        speechSynthesis.speak(utterance);
+      };
+
+      // Check if voices are already loaded
+      if (speechSynthesis.getVoices().length > 0) {
+        setVoiceAndSpeak();
+      } else {
+        // Wait for voices to be loaded
+        speechSynthesis.onvoiceschanged = setVoiceAndSpeak;
+        
+        // Fallback timeout in case onvoiceschanged doesn't fire
+        setTimeout(() => {
+          if (speechSynthesis.getVoices().length === 0) {
+            console.warn('No voices loaded, using default voice');
+          }
+          setVoiceAndSpeak();
+        }, 1000);
       }
-      
-      utterance.rate = 1.0;
-      utterance.pitch = 1.0;
-      utterance.volume = 1.0;
-      
-      utterance.onend = () => resolve();
-      utterance.onerror = (error) => reject(error);
-      
-      speechSynthesis.speak(utterance);
     });
   }
 
@@ -209,7 +260,12 @@ class TTSService {
     this.isPlaying = true;
     
     try {
+      console.log('TTS: Starting speech synthesis for:', text);
       await this.synthesizeSpeech(text, voiceType);
+      console.log('TTS: Speech synthesis completed');
+    } catch (error) {
+      console.error('TTS: Speech synthesis failed:', error);
+      throw error;
     } finally {
       this.isPlaying = false;
     }
@@ -219,16 +275,23 @@ class TTSService {
    * Stop current speech playback
    */
   stopSpeech() {
-    if ('speechSynthesis' in window) {
-      speechSynthesis.cancel();
+    try {
+      if ('speechSynthesis' in window) {
+        speechSynthesis.cancel();
+        console.log('TTS: Speech synthesis cancelled');
+      }
+      
+      if (this.currentAudio) {
+        this.currentAudio.pause();
+        this.currentAudio = null;
+        console.log('TTS: Audio playback stopped');
+      }
+      
+      this.isPlaying = false;
+    } catch (error) {
+      console.error('TTS: Error stopping speech:', error);
+      this.isPlaying = false;
     }
-    
-    if (this.currentAudio) {
-      this.currentAudio.pause();
-      this.currentAudio = null;
-    }
-    
-    this.isPlaying = false;
   }
 
   /**
