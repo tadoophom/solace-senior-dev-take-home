@@ -53,6 +53,9 @@ async function getKey(keyMaterial) {
 }
 
 function toBase64(ab) {
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(ab).toString('base64');
+  }
   const uint8Array = new Uint8Array(ab);
   let binary = '';
   for (let i = 0; i < uint8Array.length; i++) {
@@ -62,6 +65,9 @@ function toBase64(ab) {
 }
 
 function fromBase64(b64) {
+  if (typeof Buffer !== 'undefined') {
+    return new Uint8Array(Buffer.from(b64, 'base64'));
+  }
   const binary = atob(b64);
   const uint8Array = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) {

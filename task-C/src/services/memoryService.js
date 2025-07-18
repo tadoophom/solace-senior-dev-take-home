@@ -5,9 +5,10 @@
 import { encryptBlob, uploadBlob, downloadAndDecrypt } from '@solace/client-sdk';
 
 class MemoryService {
-  constructor() {
+  constructor(encryptionKey) {
     this.apiUrl = import.meta.env.VITE_SOLACE_API_URL;
-    this.encryptionKey = import.meta.env.VITE_SOLACE_ENC_KEY;
+    this.encryptionKey =
+      encryptionKey || localStorage.getItem('solace_enc_key') || import.meta.env.VITE_SOLACE_ENC_KEY;
     this.keyBytes = null;
     this.conversationBlobKey = null;
     this.initializeKey();
@@ -29,6 +30,17 @@ class MemoryService {
         console.error('Failed to initialize encryption key:', error);
       }
     }
+  }
+
+  /**
+   * Set encryption key and persist in localStorage
+   */
+  setEncryptionKey(b64Key) {
+    this.encryptionKey = b64Key;
+    if (b64Key) {
+      localStorage.setItem('solace_enc_key', b64Key);
+    }
+    this.initializeKey();
   }
 
   /**
@@ -102,13 +114,14 @@ class MemoryService {
   clearConversation() {
     this.conversationBlobKey = null;
     localStorage.removeItem('solace_conversation_key');
+    localStorage.removeItem('solace_enc_key');
   }
 
   /**
    * Check if service is properly configured
    */
   isConfigured() {
-    return !!(this.apiUrl && this.encryptionKey && this.keyBytes);
+    return !!(this.apiUrl && this.keyBytes);
   }
 }
 
