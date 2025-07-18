@@ -5,10 +5,22 @@ import boto3
 from botocore.exceptions import ClientError
 import logging
 import uuid
+import re
 
 # Set up logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+
+# Reuse AWS clients across invocations for better performance
+s3_client = boto3.client("s3")
+kms_client = boto3.client("kms")
+
+# CORS and size configuration
+ALLOWED_ORIGIN = os.environ.get("ALLOWED_ORIGIN", "*")
+MAX_BLOB_SIZE = int(os.environ.get("MAX_BLOB_SIZE_MB", "5")) * 1024 * 1024
+
+# Validate blob keys to avoid directory traversal or injection
+BLOB_KEY_RE = re.compile(r"^[\w\.-]+$")
 
 def handler(event, context):
     """
@@ -19,7 +31,7 @@ def handler(event, context):
     # CORS headers for all responses
     headers = {
         "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
         "Access-Control-Allow-Methods": "POST, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type"
     }
@@ -45,9 +57,7 @@ def handler(event, context):
                 "body": json.dumps({"error": "Internal server error"})
             }
         
-        # Initialize AWS clients
-        s3_client = boto3.client("s3")
-        kms_client = boto3.client("kms")
+
         
         # Determine operation based on Content-Type (check both API Gateway and Function URL formats)
         content_type = (
@@ -81,6 +91,14 @@ def handle_upload(event, s3_client, kms_client, bucket_name, kms_key_id, headers
             blob_data = base64.b64decode(body)
         else:
             blob_data = body.encode('utf-8') if isinstance(body, str) else body
+
+        if len(blob_data) > MAX_BLOB_SIZE:
+            logger.warning("Uploaded blob exceeds max allowed size")
+            return {
+                "statusCode": 413,
+                "headers": headers,
+                "body": json.dumps({"error": "Payload too large"})
+            }
         
         # Generate unique blob key
         blob_key = str(uuid.uuid4()) + ".blob"
@@ -138,6 +156,13 @@ def handle_download(event, s3_client, kms_client, bucket_name, headers):
                 "statusCode": 400,
                 "headers": headers,
                 "body": json.dumps({"error": "blobKey is required"})
+            }
+        if not BLOB_KEY_RE.match(blob_key):
+            logger.warning("Invalid blobKey format")
+            return {
+                "statusCode": 400,
+                "headers": headers,
+                "body": json.dumps({"error": "Invalid blobKey"})
             }
         
         # Fetch encrypted blob from S3
