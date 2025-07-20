@@ -9,7 +9,7 @@ PLAINTEXT_FILE=${1:-sample.txt}
 
 # Encrypt sample
 aws kms encrypt \
-  --key-id alias/solace/decrypt \
+  --key-id a856b583-ddc2-44e9-83f5-137017adaed5 \
   --plaintext fileb://"$PLAINTEXT_FILE" \
   --output text --query CiphertextBlob | base64 --decode > encrypted.blob
 

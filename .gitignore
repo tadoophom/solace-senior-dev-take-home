@@ -4,24 +4,13 @@ venv/
 __pycache__/
 *.egg-info/
 
-# Package lock files
-package-lock.json
-
-# Build artifacts
+# Build artifacts (must be built locally)
 dist/
 build/
 *.pyc
 *.pyo
 *.pyd
 .Python
-
-# Package files
-*.egg
-*.zip
-*.tar.gz
-*.tgz
-*.tar
-*.whl
 
 # Logs
 *.log
@@ -38,7 +27,7 @@ htmlcov/
 .coverage
 .coverage.*
 
-# Environment variables
+# Environment variables (secrets)
 .env
 .env.local
 .env.development.local
@@ -61,47 +50,48 @@ htmlcov/
 ehthumbs.db
 Thumbs.db
 
-# Temporary files
-.tmp/
-.temp/
-tmp/
-temp/
-
-# Lock files (keep package-lock.json but ignore others)
+# Lock files (must be installed locally)
+package-lock.json
 yarn.lock
 pnpm-lock.yaml
 
-# AWS/Lambda specific
+# AWS/Lambda deployment artifacts
 lambda_package/
 infra/deployment-package.zip
+*.zip
 
-# Terraform specific
+# Terraform state (must be managed locally)
 .terraform/
 .terraform.lock.hcl
-terraform.tfstate
-terraform.tfstate.backup
+terraform.tfstate*
 *.tfplan
-*.tfstate
+*.tfvars
 .terraformrc
 terraform.rc
 
-# Python specific
+# Python testing and caching
 .pytest_cache/
 .mypy_cache/
 .tox/
-.coverage
-.coverage.*
 .cache
-nosetests.xml
-coverage.xml
-*.cover
 .hypothesis/
 
-# Node.js specific
+# Node.js caching
 .npm
 .eslintcache
 .node_repl_history
 .yarn-integrity
 
-# Jest
+# Test artifacts
 jest_*
+
+# Any generated keys or certificates
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Local development files
+.env.local
+.vscode/settings.json

@@ -1,23 +1,40 @@
 {
   "name": "@solace/client-sdk",
   "version": "0.1.0",
-  "description": "",
+  "description": "Solace client SDK with encryption and VAD capabilities",
   "main": "src/index.js",
-  "module": "src/index.mjs",
+  "module": "src/index.js",
+  "browser": "src/index.js",
   "type": "module",
+  "exports": {
+    ".": {
+      "import": "./src/index.js",
+      "default": "./src/index.js"
+    }
+  },
   "scripts": {
     "build": "rollup -c",
-    "test": "jest"
+    "test": "jest",
+    "prepublishOnly": "npm run build"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "encryption",
+    "vad",
+    "voice",
+    "solace"
+  ],
+  "author": "Solace Team",
   "license": "ISC",
   "devDependencies": {
-    "@rollup/plugin-json": "^5.0.0",
+    "@babel/preset-env": "^7.28.0",
     "@rollup/plugin-commonjs": "^24.0.0",
+    "@rollup/plugin-json": "^5.0.0",
     "@rollup/plugin-node-resolve": "^15.0.0",
+    "babel-jest": "^30.0.4",
+    "babel-plugin-transform-import-meta": "^2.3.3",
     "eslint": "^9.31.0",
-    "jest": "^30.0.4"
+    "jest": "^30.0.4",
+    "jest-environment-jsdom": "^30.0.4"
   },
   "dependencies": {
     "cross-fetch": "^3.1.9",

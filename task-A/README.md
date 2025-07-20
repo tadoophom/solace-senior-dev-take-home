@@ -1,104 +1,159 @@
-# Solace – Task A
+# Task A: Enclave-Style Decryption Service
 
-**Enclave-Style Decryption Service (AWS Lambda + KMS)**
+**Goal**: Emulate a TEE by using AWS Lambda + KMS for "data in use" security.
 
-This service emulates a trusted-execution environment (TEE) by keeping data encrypted at rest (S3), only decrypting inside an AWS Lambda function that has exclusive access to a dedicated KMS key.  The function is exposed through a Lambda Function URL, allowing any HTTP client to request a plaintext reveal of a previously-uploaded, encrypted blob.
-
-## 1. Architecture
+## Architecture
 
 ```text
-Client ──► S3 (encrypted blob)
-        └──► Lambda URL  ─►  Lambda (Python) ─► KMS Decrypt ─► Plaintext JSON
+HTTP POST → Lambda Function URL → Lambda Handler → KMS Decrypt → JSON Response
+                ↓
+            S3 Bucket (encrypted blobs)
 ```
 
-* **S3 Bucket** – stores ciphertext blobs (server-side encryption enforced).
-* **KMS CMK** (`alias/solace/decrypt`) – only the Lambda’s IAM role has `kms:Decrypt` permissions.
-* **Lambda Function** – Python 3.9 runtime, 128 MB memory, 30 s timeout.  Retrieves the object, calls KMS `Decrypt`, and returns `{ "plaintext": string }` with CORS headers.
-* **Lambda Function URL** – public HTTPS endpoint (no auth for demo; tighten in prod).
-* All resources are provisioned with **Terraform** (see `infra/`).
+### Components
+- **Lambda Function**: Python handler that processes decryption requests
+- **KMS Key**: `/solace/decrypt` alias with Lambda-only access policy  
+- **S3 Bucket**: Encrypted blob storage with bucket policies
+- **Lambda Function URL**: Public HTTPS endpoint with CORS
 
-## 2. Prerequisites
+## Requirements Implemented
 
-* Python ≥ 3.9
-* AWS CLI configured with an account that can create Lambda, IAM, KMS, S3.
-* Terraform ≥ 1.0
-* jq
-* [uv](https://github.com/astral-sh/uv)
+### 1. Lambda Implementation (`src/`)
+**Handler**: Receives blobKey via HTTP POST  
+**S3 Integration**: Fetches encrypted blob using AWS SDK  
+**KMS Decryption**: Uses KMS Decrypt API with IAM enforcement  
+**Response**: Returns `{ plaintext: string }` with CORS headers  
 
-## 3. Deployment
+### 2. Infrastructure as Code (`infra/`)
+**Terraform**: Complete infrastructure definition  
+**Lambda Function**: Memory and timeout optimized for decrypt operations  
+**KMS Key**: `/solace/decrypt` alias with restrictive policy  
+**S3 Bucket**: Encryption at rest enforced  
+**API Gateway**: Lambda Function URL for public access  
 
-1. Clone the repository and move into Task A:
+### 3. Security Best Practices
+**IAM Roles**: Least-privilege permissions  
+**Encryption**: S3 server-side encryption enforced  
+**Environment Variables**: Configuration via env vars  
+**CORS**: Proper headers for web client access  
 
-   ```bash
-   git clone <repo-url>
-   cd solace-senior-dev-take-home/task-A
-   ```
+### 4. Testing
+**Sample Data**: Encrypted test blobs provided  
+**Test Script**: `decrypt_test.sh` for end-to-end validation  
+**Unit Tests**: Comprehensive handler testing  
 
-2. Build the Lambda deployment package (source + dependencies):
+## Setup Steps
 
-   ```bash
-   ./infra/deploy.sh
-   ```
+### Prerequisites
+- Python ≥3.9
+- AWS CLI configured with Lambda, KMS, S3, IAM permissions
+- Terraform ≥1.0
 
-   This script:
-   * Installs Python dependencies listed in `requirements.txt` into a temporary directory.
-   * Copies `src/handler.py`.
-   * Produces `infra/deployment-package.zip` which Terraform references.
+### Deployment Commands
 
-3. Provision AWS resources:
+1. **Initialize Terraform**:
+```bash
+cd infra/
+terraform init
+```
 
-   ```bash
-   cd infra
-   terraform init
-   terraform apply -auto-approve
-   ```
+2. **Deploy Infrastructure**:
+```bash
+terraform apply
+```
 
-   Useful outputs:
+3. **Test Deployment**:
+```bash
+./decrypt_test.sh
+```
 
-   * `function_url` – HTTPS endpoint
-   * `bucket_name` – ciphertext storage bucket
-   * `kms_key_id` – CMK ID (for local encryption tests)
-
-## 4. End-to-End Test
-
-After `terraform apply` completes:
+### Example curl Invocation
 
 ```bash
-# Export helper vars for the test script
-export BUCKET=$(terraform output -raw bucket_name)
-export FUNCTION_URL=$(terraform output -raw function_url)
+# Get function URL from Terraform output
+FUNCTION_URL=$(terraform output -raw function_url)
 
-# (Optional) verify
-echo "Bucket:        $BUCKET"
-echo "Function URL: $FUNCTION_URL"
-
-# Run provided helper – encrypt sample.txt, upload, decrypt via Lambda
-./decrypt_test.sh sample.txt
+# Test decryption
+curl -X POST "$FUNCTION_URL" \
+  -H "Content-Type: application/json" \
+  -d '{"blobKey": "test.blob"}' \
+  | jq
 ```
 
-You should see output similar to:
-
+**Expected Response**:
 ```json
 {
-  "plaintext": "Hello from Solace! This is a sample file."
+  "plaintext": "Hello, Solace!",
+  "size": 14,
+  "cached": false,
+  "metadata": {
+    "encrypted": true,
+    "version": "2.0"
+  },
+  "request_id": "abc123",
+  "timestamp": 1640995200
 }
 ```
 
-### Manual cURL
+## File Structure
 
-Assuming you already uploaded `test.blob` to S3:
-
-```bash
-curl -X POST "$FUNCTION_URL" \
-     -H "Content-Type: application/json" \
-     -d '{"blobKey": "test.blob"}'
+```
+task-A/
+├── src/
+│   └── handler.py          # Lambda function implementation
+├── infra/
+│   ├── main.tf            # Main Terraform configuration
+│   ├── lambda.tf          # Lambda function resources
+│   ├── iam.tf             # IAM roles and policies
+│   ├── s3.tf              # S3 bucket configuration
+│   ├── outputs.tf         # Terraform outputs
+│   └── variables.tf       # Input variables
+├── decrypt_test.sh        # End-to-end test script
+├── encrypted.blob         # Sample encrypted test data
+└── README.md              # This file
 ```
 
----
+## Performance & Optimization
 
-## 5. Cleanup
+- **Connection Pooling**: Reused AWS clients across invocations
+- **Caching**: In-memory blob cache for frequently accessed data
+- **Memory**: 512MB allocation for optimal cold start performance  
+- **Timeout**: 30s to handle large blob processing
 
+## Security Model
+
+- **KMS Key Policy**: Only Lambda execution role can decrypt
+- **S3 Bucket Policy**: Lambda read-only access to blob objects
+- **IAM Least Privilege**: Minimal required permissions
+- **Encryption at Rest**: S3 server-side encryption enforced
+- **Transport Security**: HTTPS-only with security headers
+
+## Monitoring
+
+- **CloudWatch Logs**: Structured logging with request tracing
+- **CloudWatch Metrics**: Lambda performance and error metrics
+- **X-Ray Tracing**: Request flow visualization (optional)
+
+## Testing
+
+### Unit Tests
 ```bash
-cd infra
-terraform destroy -auto-approve
+cd src/
+python -m pytest tests/
+```
+
+### Integration Test
+```bash
+./decrypt_test.sh sample.txt
+```
+
+### Load Testing
+```bash
+# Use the provided test blob for load testing
+for i in {1..10}; do
+  curl -X POST "$FUNCTION_URL" \
+    -H "Content-Type: application/json" \
+    -d '{"blobKey": "test.blob"}' &
+done
+wait
 ```

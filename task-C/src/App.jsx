@@ -5,8 +5,9 @@ import SpeechRecognitionService from './services/speechRecognition';
 import ChatService from './services/chatService';
 import MemoryService from './services/memoryService';
 import TTSService from './services/ttsService';
-import VADIntegration from './utils/vadIntegration';
+// import VADIntegration from './utils/vadIntegration';
 import ServiceStatus from './components/ServiceStatus';
+import ErrorBoundary from './components/ErrorBoundary';
 
 function App() {
   const [isRecording, setIsRecording] = useState(false);
@@ -20,52 +21,89 @@ function App() {
   const [statusMinimized, setStatusMinimized] = useState(true);
   const [retryCount, setRetryCount] = useState(0);
 
-  // Service instances
-  const audioCapture = useRef(new AudioCaptureService());
-  const speechRecognition = useRef(new SpeechRecognitionService());
-  const chatService = useRef(new ChatService());
-  const memoryService = useRef(new MemoryService());
-  const ttsService = useRef(new TTSService());
-  const vadIntegration = useRef(new VADIntegration());
+  // Service instances - create once and reuse for performance
+  const audioCapture = useRef(null);
+  const speechRecognition = useRef(null);
+  const chatService = useRef(null);
+  const memoryService = useRef(null);
+  const ttsService = useRef(null);
+  // Simple VAD stub to avoid reference errors
+  const vadIntegration = useRef({
+    stopVAD: () => {},
+    setVoiceDetectedCallback: () => {},
+    setSilenceDetectedCallback: () => {},
+    startVAD: () => Promise.resolve()
+  });
 
-  // Initialize services and check status
+  // Initialize services once on mount
   useEffect(() => {
+    // Initialize services only once
+    if (!audioCapture.current) {
+      audioCapture.current = new AudioCaptureService();
+    }
+    if (!speechRecognition.current) {
+      speechRecognition.current = new SpeechRecognitionService();
+    }
+    if (!chatService.current) {
+      chatService.current = new ChatService();
+    }
+    if (!memoryService.current) {
+      memoryService.current = new MemoryService();
+    }
+    if (!ttsService.current) {
+      ttsService.current = new TTSService();
+    }
+
     initializeServices();
     loadConversationHistory();
     
     // Keyboard shortcuts
     const handleKeyPress = (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      // Don't trigger shortcuts when typing in inputs or if modifiers are pressed
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || 
+          e.ctrlKey || e.altKey || e.metaKey) return;
       
-      switch(e.key) {
+      switch(e.key.toLowerCase()) {
         case ' ':
           e.preventDefault();
-          if (!isRecording && !isPlaying) handleStartTalk();
+          if (!isRecording && !isPlaying) {
+            handleStartTalk();
+          }
           break;
-        case 'Enter':
+        case 'enter':
           e.preventDefault();
-          if (isRecording) handleStop();
+          if (isRecording) {
+            handleStop();
+          }
           break;
         case 'p':
           e.preventDefault();
-          if (response && !isPlaying && !isRecording) handlePlayResponse();
+          if (response && !isPlaying && !isRecording && !response.includes('Phase')) {
+            handlePlayResponse();
+          }
           break;
         case 'c':
           e.preventDefault();
-          if (!isRecording && !isPlaying) clearConversation();
+          if (!isRecording && !isPlaying) {
+            clearConversation();
+          }
           break;
       }
     };
     
+    // Use keydown for better responsiveness
     document.addEventListener('keydown', handleKeyPress);
     
     return () => {
       document.removeEventListener('keydown', handleKeyPress);
-      audioCapture.current.cleanup();
+      // Cleanup services
+      if (audioCapture.current) audioCapture.current.cleanup();
+      if (speechRecognition.current) speechRecognition.current.cleanup();
+      if (chatService.current) chatService.current.cleanup();
+      if (ttsService.current) ttsService.current.stopSpeech();
       vadIntegration.current.stopVAD();
-      ttsService.current.stopSpeech();
     };
-  }, [isRecording, isPlaying, response]);
+  }, []); // Empty dependency array - run only once
 
   // Initialize and check service status
   const initializeServices = async () => {
@@ -79,25 +117,39 @@ function App() {
 
     const serviceStatus = await Promise.all(
       serviceChecks.map(async ({ name, service, check }) => {
-        const isConfigured = check();
-        let isWorking = null;
+        let isConfigured = false;
+        let isWorking = false;
         
         try {
           // Test service functionality
-          if (name === 'Audio Capture' && isConfigured) {
-            isWorking = true; // Will be tested on first use
-          } else if (name === 'Speech Recognition' && isConfigured) {
-            isWorking = true; // Will be tested on first use
-          } else if (name === 'AI Chat' && isConfigured) {
-            isWorking = true; // Will be tested on first use
-          } else if (name === 'Memory Storage' && isConfigured) {
-            isWorking = true; // Will be tested on first use
-          } else if (name === 'Text-to-Speech' && isConfigured) {
-            isWorking = true; // Will be tested on first use
+          if (name === 'Audio Capture' && service) {
+            isConfigured = !!navigator.mediaDevices && !!window.MediaRecorder;
+            // Try to initialize to check if working
+            try {
+              await service.initialize();
+              isWorking = service.isInitialized();
+            } catch (error) {
+              console.warn(`Audio Capture initialization failed: ${error.message}`);
+              isWorking = false;
+            }
+          } else if (name === 'Speech Recognition' && service) {
+            isConfigured = service.isConfigured();
+            isWorking = isConfigured;
+          } else if (name === 'AI Chat' && service) {
+            isConfigured = service.isConfigured();
+            isWorking = isConfigured;
+          } else if (name === 'Memory Storage' && service) {
+            isConfigured = service.isConfigured();
+            isWorking = isConfigured;
+          } else if (name === 'Text-to-Speech' && service) {
+            isConfigured = 'speechSynthesis' in window || service.isConfigured();
+            isWorking = isConfigured;
           } else {
+            isConfigured = check();
             isWorking = isConfigured;
           }
         } catch (error) {
+          console.warn(`Service check failed for ${name}:`, error);
           isWorking = false;
         }
         
@@ -108,7 +160,7 @@ function App() {
     setServices(serviceStatus);
     
     const allReady = serviceStatus.every(s => s.isConfigured && s.isWorking);
-    setStatus(allReady ? 'Ready' : 'Some services not configured');
+    setStatus(allReady ? 'Ready (press Space to talk)' : 'Some services not configured');
   };
 
   // Load saved conversation from encrypted storage
@@ -139,6 +191,33 @@ function App() {
     }
   };
 
+  // Process transcript and get AI response (shared between Web Speech API and audio recording)
+  const processTranscriptAndRespond = async (transcribedText) => {
+    if (!transcribedText || transcribedText.trim() === '') {
+      throw new Error('No speech detected');
+    }
+
+    setTranscript(transcribedText);
+    setStatus('Getting AI response...');
+
+    // Send to chatbot and get response with retry
+    const aiResponse = await handleWithRetry(async () => {
+      const conversationHistory = chatService.current.getConversationHistory();
+      return await chatService.current.sendMessage(transcribedText, conversationHistory);
+    });
+
+    setResponse(aiResponse);
+    setStatus('Response ready (press P to play)');
+
+    // Save conversation to encrypted storage
+    try {
+      const updatedHistory = chatService.current.getConversationHistory();
+      await memoryService.current.saveConversation(updatedHistory);
+    } catch (memoryError) {
+      console.warn('Failed to save conversation:', memoryError);
+    }
+  };
+
   const handleStartTalk = async () => {
     try {
       setError('');
@@ -154,7 +233,34 @@ function App() {
       } catch (cleanupError) {
         console.warn('Cleanup error:', cleanupError);
       }
+
+      // Try Web Speech API first (works better in browsers)
+      if (speechRecognition.current.webSpeechSupported) {
+        try {
+          setStatus('Starting speech recognition... Please speak now!');
+          setIsRecording(true); // Set recording state for UI
+          
+          console.log('Starting Web Speech API directly...');
+          const transcript = await speechRecognition.current.transcribeWithWebSpeech();
+          
+          console.log('Web Speech API transcript received:', transcript);
+          
+          // Process the transcript immediately
+          await processTranscriptAndRespond(transcript);
+          setIsRecording(false);
+          return;
+          
+        } catch (webSpeechError) {
+          console.error('Web Speech API failed:', webSpeechError);
+          setStatus('Speech recognition failed, trying audio recording...');
+          setIsRecording(false);
+          // Continue to audio recording fallback below
+        }
+      } else {
+        console.log('Web Speech API not supported, using audio recording');
+      }
       
+      // Fallback to audio recording for Whisper API
       // Check if we should use Web Speech API fallback
       if (error && error.includes('browser speech recognition')) {
         await handleWebSpeechFallback();
@@ -379,253 +485,248 @@ function App() {
     setStatus('Conversation cleared');
   };
 
+  // Debug function for testing optimizations
+  const testOptimizations = async () => {
+    try {
+      console.log('=== OPTIMIZATION TEST ===');
+      
+      // Test chat service caching
+      const testMessage = "Hello, can you hear me?";
+      const startTime = performance.now();
+      const demoResponse = chatService.current.getOptimizedDemoResponse(testMessage);
+      const endTime = performance.now();
+      
+      console.log(`Demo response: "${demoResponse}"`);
+      console.log(`Processing time: ${endTime - startTime}ms`);
+      
+      // Get performance stats
+      const chatStats = chatService.current.getStats();
+      const speechStats = speechRecognition.current.getStats();
+      const audioStats = audioCapture.current.getStats();
+      
+      console.log('Chat Service Stats:', chatStats);
+      console.log('Speech Recognition Stats:', speechStats);
+      console.log('Audio Capture Stats:', audioStats);
+      
+      setResponse(demoResponse);
+      setStatus('Optimization test completed - check console for details');
+      
+    } catch (error) {
+      console.error('Optimization test failed:', error);
+      setError(`Test failed: ${error.message}`);
+    }
+  };
+
+  // Test voice functionality
+  const testVoice = async () => {
+    try {
+      setError('');
+      setStatus('Testing voice...');
+      
+      console.log('=== VOICE TEST ===');
+      
+      // Test current selected voice
+      const testText = `Hello! This is a test of the ${selectedVoice} voice. Can you hear me clearly?`;
+      
+      setIsPlaying(true);
+      await ttsService.current.testVoice(selectedVoice, testText);
+      
+      setStatus('Voice test completed successfully');
+      
+    } catch (error) {
+      console.error('Voice test failed:', error);
+      setError(`Voice test failed: ${error.message}`);
+      setStatus('Voice test failed');
+    } finally {
+      setIsPlaying(false);
+    }
+  };
+
+  // Test AWS Polly specifically
+  const testPolly = async () => {
+    try {
+      setError('');
+      setStatus('Testing AWS Polly...');
+      
+      console.log('=== AWS POLLY TEST ===');
+      
+      setIsPlaying(true);
+      await ttsService.current.testPolly(selectedVoice);
+      
+      setStatus('AWS Polly test completed successfully');
+      
+    } catch (error) {
+      console.error('AWS Polly test failed:', error);
+      setError(`AWS Polly test failed: ${error.message}`);
+      setStatus('AWS Polly test failed');
+    } finally {
+      setIsPlaying(false);
+    }
+  };
+
   return (
-    <div className="app">
-      <header className="app-header">
-        <h1>Solace Lite - Voice Companion</h1>
-        <p className="status">Status: {status}</p>
-        {error && (
-          <div className="error-message">
-            <p>{error}</p>
-            {retryCount > 0 && <small>Retries: {retryCount}</small>}
-            <button onClick={clearError} className="error-close">×</button>
-          </div>
-        )}
-      </header>
-
-      <main className="app-main">
-        <ServiceStatus 
-          services={services} 
-          isMinimized={statusMinimized} 
-          onToggle={() => setStatusMinimized(!statusMinimized)} 
-        />
-
-        <div className="controls">
-          <div className="voice-selection">
-            <label htmlFor="voice-select">Voice:</label>
-            <select 
-              id="voice-select" 
-              value={selectedVoice} 
-              onChange={handleVoiceChange}
-              disabled={isRecording}
-            >
-              <option value="female">Female</option>
-              <option value="male">Male</option>
-            </select>
-          </div>
-
-          <div className="action-buttons">
-            <button 
-              className="btn btn-primary" 
-              onClick={handleStartTalk}
-              disabled={isRecording || isPlaying}
-              title="Start recording (Space)"
-            >
-              {isRecording ? 'Recording...' : 'Talk'}
-            </button>
-
-            <button 
-              className="btn btn-secondary" 
-              onClick={handleStop}
-              disabled={!isRecording}
-              title="Stop recording (Enter)"
-            >
-              Stop
-            </button>
-
-            <button 
-              className="btn btn-success" 
-              onClick={handlePlayResponse}
-              disabled={!response || isPlaying || response.includes('Phase')}
-              title="Play response (P)"
-            >
-              {isPlaying ? 'Playing...' : 'Play Response'}
-            </button>
-
-            <button 
-              className="btn btn-warning" 
-              onClick={clearConversation}
-              disabled={isRecording || isPlaying}
-              title="Clear conversation (C)"
-            >
-              Clear
-            </button>
-
-            <button 
-              className="btn btn-info" 
-              onClick={() => {
-                console.log('=== SIMPLE TTS TEST ===');
-                
-                // Most basic TTS test possible
-                if ('speechSynthesis' in window) {
-                  // Cancel any existing speech
-                  speechSynthesis.cancel();
-                  
-                  // Wait a moment for cancel to complete
-                  setTimeout(() => {
-                    const text = 'Hello, this is a simple text to speech test';
-                    console.log('Speaking:', text);
-                    
-                    const utterance = new SpeechSynthesisUtterance(text);
-                    utterance.volume = 1;
-                    utterance.rate = 1;
-                    utterance.pitch = 1;
-                    
-                    utterance.onstart = () => console.log('✅ TTS started');
-                    utterance.onend = () => console.log('✅ TTS ended');
-                    utterance.onerror = (e) => console.error('❌ TTS error:', e);
-                    
-                    speechSynthesis.speak(utterance);
-                  }, 100);
-                } else {
-                  console.error('❌ speechSynthesis not supported');
-                }
-              }}
-              disabled={isRecording || isPlaying}
-              title="Simple TTS Test"
-            >
-              Test TTS
-            </button>
-
-            <button 
-              className="btn btn-success" 
-              onClick={async () => {
-                console.log('=== MANUAL DEMO TEST ===');
-                
-                // Simulate complete voice flow
-                setTranscript("Hello, can you hear me?");
-                setStatus('Demo: Getting AI response...');
-                
-                // Force demo response directly
-                const demoResponse = await chatService.current.getDemoResponse("Hello, can you hear me?");
-                setResponse(demoResponse);
-                setStatus('Demo response ready - click Play Response to hear it');
-                
-                console.log('Demo response set:', demoResponse);
-                console.log('You can now click "Play Response" to hear the TTS');
-              }}
-              disabled={isRecording || isPlaying}
-              title="Manual Demo Mode"
-            >
-              Demo Mode
-            </button>
-
-            <button 
-              className="btn btn-warning" 
-              onClick={() => {
-                // Browser compatibility check
-                const checks = {
-                  'speechSynthesis': 'speechSynthesis' in window,
-                  'SpeechSynthesisUtterance': 'SpeechSynthesisUtterance' in window,
-                  'webkitSpeechRecognition': 'webkitSpeechRecognition' in window,
-                  'SpeechRecognition': 'SpeechRecognition' in window,
-                  'MediaRecorder': 'MediaRecorder' in window,
-                  'getUserMedia': !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)
-                };
-                
-                console.log('=== BROWSER COMPATIBILITY CHECK ===');
-                Object.entries(checks).forEach(([feature, supported]) => {
-                  console.log(`${supported ? '✅' : '❌'} ${feature}: ${supported}`);
-                });
-                
-                // Show summary
-                const supportedCount = Object.values(checks).filter(Boolean).length;
-                const totalCount = Object.keys(checks).length;
-                
-                alert(`Browser Support: ${supportedCount}/${totalCount} features supported\n\nCheck console for details`);
-              }}
-              title="Check Browser Compatibility"
-            >
-              Check Browser
-            </button>
-
-            <button 
-              className="btn btn-danger" 
-              onClick={async () => {
-                console.log('=== FULL DEMO MODE ===');
-                
-                // Simulate the complete voice companion flow
-                setStatus('Demo: Simulating voice input...');
-                setTranscript('Hello, can you hear me?');
-                
-                setTimeout(() => {
-                  setStatus('Demo: Getting AI response...');
-                  
-                  setTimeout(() => {
-                    const demoResponse = "Yes, I can hear you! This is a demo of the voice companion working offline. The speech recognition, AI chat, and text-to-speech are all functional!";
-                    setResponse(demoResponse);
-                    setStatus('Demo: Response ready - click Play Response to hear it');
-                    
-                    console.log('Demo response set:', demoResponse);
-                    
-                    // Auto-play the response after a moment
-                    setTimeout(async () => {
-                      if ('speechSynthesis' in window) {
-                        console.log('Demo: Auto-playing TTS response');
-                        setStatus('Demo: Playing response...');
-                        setIsPlaying(true);
-                        
-                        const utterance = new SpeechSynthesisUtterance(demoResponse);
-                        utterance.rate = 1;
-                        utterance.pitch = 1;
-                        utterance.volume = 1;
-                        
-                        utterance.onstart = () => {
-                          console.log('Demo TTS started');
-                        };
-                        
-                        utterance.onend = () => {
-                          console.log('Demo TTS ended');
-                          setIsPlaying(false);
-                          setStatus('Demo complete! The voice companion is fully functional.');
-                        };
-                        
-                        utterance.onerror = (e) => {
-                          console.error('Demo TTS error:', e);
-                          setIsPlaying(false);
-                          setStatus('Demo TTS failed, but text response is working');
-                        };
-                        
-                        speechSynthesis.speak(utterance);
-                      } else {
-                        setStatus('Demo complete! (TTS not available in this browser)');
-                      }
-                    }, 1000);
-                    
-                  }, 1500);
-                }, 1000);
-              }}
-              disabled={isRecording || isPlaying}
-              title="Full Demo Mode"
-            >
-              Full Demo
-            </button>
-          </div>
-        </div>
-
-        <div className="conversation">
-          <div className="transcript-section">
-            <h3>Your Message:</h3>
-            <div className="transcript-box">
-              {transcript || 'Your speech will appear here...'}
+    <ErrorBoundary>
+      <div className="app">
+        <div className="container">
+          <ErrorBoundary minimal fallback={({ retry }) => (
+            <div className="header-error">
+              <span>⚠️ Header component failed</span>
+              <button onClick={retry}>Retry</button>
             </div>
+          )}>
+            <header className="header">
+              <h1>Solace Lite Voice Companion</h1>
+              <p className="subtitle">Production-grade voice-to-voice AI with encrypted memory</p>
+            </header>
+          </ErrorBoundary>
+
+          <div className="main-content">
+            <ErrorBoundary minimal fallback={({ retry }) => (
+              <div className="controls-error">
+                <span>⚠️ Controls unavailable</span>
+                <button onClick={retry}>Retry</button>
+              </div>
+            )}>
+              <div className="controls">
+                <div className="recording-controls">
+                  <button 
+                    className={`btn primary ${isRecording ? 'recording' : ''}`}
+                    onClick={isRecording ? handleStop : handleStartTalk}
+                    disabled={isPlaying}
+                  >
+                    {isRecording ? 'Stop (Enter)' : 'Talk (Space)'}
+                  </button>
+                  
+                  <button 
+                    className="btn secondary"
+                    onClick={handlePlayResponse}
+                    disabled={!response || isRecording || isPlaying || response.includes('Phase')}
+                  >
+                    {isPlaying ? 'Playing...' : 'Play Response (P)'}
+                  </button>
+                </div>
+
+                <div className="voice-controls">
+                  <label htmlFor="voice-select">Voice:</label>
+                  <select 
+                    id="voice-select"
+                    value={selectedVoice} 
+                    onChange={handleVoiceChange}
+                    disabled={isRecording || isPlaying}
+                  >
+                    <option value="female">Female</option>
+                    <option value="male">Male</option>
+                  </select>
+                </div>
+
+                <div className="utility-controls">
+                  <button 
+                    className="btn tertiary"
+                    onClick={clearConversation}
+                    disabled={isRecording || isPlaying}
+                  >
+                    Clear (C)
+                  </button>
+                  
+                  <button 
+                    className="btn tertiary"
+                    onClick={testVoice}
+                    disabled={isRecording || isPlaying}
+                  >
+                    Test Voice
+                  </button>
+                  
+                  <button 
+                    className="btn tertiary"
+                    onClick={testPolly}
+                    disabled={isRecording || isPlaying}
+                  >
+                    Test Polly
+                  </button>
+                  
+                  <button 
+                    className="btn tertiary"
+                    onClick={testOptimizations}
+                    disabled={isRecording || isPlaying}
+                  >
+                    Test Optimizations
+                  </button>
+                </div>
+              </div>
+            </ErrorBoundary>
+
+            <ErrorBoundary minimal fallback={({ retry }) => (
+              <div className="status-error">
+                <span>⚠️ Status display failed</span>
+                <button onClick={retry}>Retry</button>
+              </div>
+            )}>
+              <div className="status-section">
+                <div className={`status ${isRecording ? 'recording' : isPlaying ? 'playing' : ''}`}>
+                  <span className="status-indicator"></span>
+                  {status}
+                </div>
+                
+                {error && (
+                  <div className="error">
+                    <span>{error}</span>
+                    <button onClick={clearError} className="error-close">×</button>
+                  </div>
+                )}
+                
+                {retryCount > 0 && (
+                  <div className="retry-info">
+                    Retries: {retryCount}
+                  </div>
+                )}
+              </div>
+            </ErrorBoundary>
+
+            <ErrorBoundary minimal fallback={({ retry }) => (
+              <div className="conversation-error">
+                <span>⚠️ Conversation display failed</span>
+                <button onClick={retry}>Retry</button>
+              </div>
+            )}>
+              <div className="conversation">
+                {transcript && (
+                  <div className="message user">
+                    <div className="message-header">
+                      <span className="sender">You</span>
+                      <span className="timestamp">{new Date().toLocaleTimeString()}</span>
+                    </div>
+                    <div className="message-content">{transcript}</div>
+                  </div>
+                )}
+                
+                {response && (
+                  <div className="message assistant">
+                    <div className="message-header">
+                      <span className="sender">AI Assistant</span>
+                      <span className="timestamp">{new Date().toLocaleTimeString()}</span>
+                    </div>
+                    <div className="message-content">{response}</div>
+                  </div>
+                )}
+              </div>
+            </ErrorBoundary>
           </div>
 
-          <div className="response-section">
-            <h3>AI Response:</h3>
-            <div className="response-box">
-              {response || 'AI response will appear here...'}
+          <ErrorBoundary minimal fallback={({ retry }) => (
+            <div className="service-status-error">
+              <span>⚠️ Service status unavailable</span>
+              <button onClick={retry}>Retry</button>
             </div>
-          </div>
+          )}>
+            <ServiceStatus 
+              services={services}
+              isMinimized={statusMinimized}
+              onToggle={() => setStatusMinimized(!statusMinimized)}
+            />
+          </ErrorBoundary>
         </div>
-
-        <div className="keyboard-shortcuts">
-          <small>
-            Shortcuts: Space=Talk • Enter=Stop • P=Play • C=Clear
-          </small>
-        </div>
-      </main>
-    </div>
+      </div>
+    </ErrorBoundary>
   );
 }
 

@@ -10,5 +10,5 @@ output "bucket_name" {
 
 output "kms_key_id" {
   description = "KMS key ID for encryption"
-  value       = aws_kms_key.decrypt.key_id
+  value       = data.aws_kms_key.existing.key_id
 } 

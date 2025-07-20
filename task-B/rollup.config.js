@@ -10,12 +10,19 @@ export default {
     exports: 'named',
     inlineDynamicImports: true
   },
+  external: ['crypto', 'util', 'fs', 'path'],
   plugins: [
     // Resolve browser-specific entry points and avoid Node built-ins
-    nodeResolve({ browser: true, preferBuiltins: false }),
+    nodeResolve({ 
+      browser: true, 
+      preferBuiltins: false,
+      exportConditions: ['browser']
+    }),
     // Allow importing JSON files
     json(),
     // Convert CommonJS modules to ESModules
-    commonjs()
+    commonjs({
+      ignoreDynamicRequires: true
+    })
   ]
 }; 

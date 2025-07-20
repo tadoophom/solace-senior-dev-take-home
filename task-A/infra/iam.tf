@@ -30,7 +30,7 @@ resource "aws_iam_policy" "lambda_policy" {
         Sid      = "AllowKMSDecryptEncrypt"
         Effect   = "Allow"
         Action   = ["kms:Decrypt", "kms:Encrypt"]
-        Resource = [aws_kms_key.decrypt.arn]
+        Resource = [data.aws_kms_key.existing.arn]
       },
       {
         Sid      = "AllowLogs"
